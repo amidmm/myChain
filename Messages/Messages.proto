@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package msg;
+import "google/protobuf/timestamp.proto";
+
+message packet{
+    enum type{
+        BUNDLE=0;
+        BLOCK=1;
+        REP=2;
+        WEAKREQ=3;
+        SANITYCHECK=4;
+    }
+    type                        packet_type =1;
+    google.protobuf.Timestamp   timestamp =2;
+    bytes                       prev=3;
+    bytes                       nonce=4;
+    uint64                      diff=5;
+    bytes                       hash=6;
+    oneof data{
+        block           blockData=7;
+        bundle          bundleData=8;
+        rep             repData=9;
+        weak_req        weakData=10;
+        sanity_check    sanityData=11;
+    }
+}
+message block {
+    repeated weak_req       reqs=1;
+    repeated bundle         bundles=2;
+    repeated sanity_check   sanities=3;
+}
+message bundle {
+    enum type{
+        POWERFUL=0;
+        WEAK=1;
+    }
+    bytes       hash=1;
+    repeated tx transactions=2;
+    bytes       verify1=3;
+    bytes       verify2=4;
+    uint64      block_number=5;
+}
+message tx{
+    bytes   hash =1;
+    bytes   bundle_hash=6;
+    bytes   refTx=2;
+    bytes   sign=3;
+    int64   value=4;
+}
+message weak_req {
+    bytes   hash=1;
+    bytes   sign=2;
+    uint32  total=3;
+}
+message rep {
+}
+message sanity_check {
+}
