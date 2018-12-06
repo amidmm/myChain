@@ -14,12 +14,12 @@ message packet{
     type                        packet_type =1;
     google.protobuf.Timestamp   timestamp =2;
     bytes                       prev=3;
-    bytes                       nonce=4;
-    uint64                      diff=5;
+    bytes                       nonce=4;    //In production nonce should be number //Not included for pow
+    uint64                      diff=5;     //Not included for pow
     bytes                       hash=6;
     uint64                      current_block_number=7;
     bytes                       addr=13;  
-    bytes                       sign=14;
+    bytes                       sign=14;    //Not included for pow
     oneof data{
         block           blockData=8;
         bundle          bundleData=9;

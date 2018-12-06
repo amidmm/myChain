@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -14,7 +15,7 @@ type pow struct {
 	target  uint32
 }
 
-func CalculatePoW(data []byte, target uint32) []byte {
+func CalculatePoW(ctx context.Context, data []byte, target uint32) []byte {
 	if target > 512 {
 		panic("Wrong target value!")
 	}
@@ -22,6 +23,7 @@ func CalculatePoW(data []byte, target uint32) []byte {
 	var nonce big.Int
 	var hashInt big.Int
 	one := big.NewInt(1)
+	done := make(chan bool, 1)
 	diff.Lsh(diff, uint(512-target))
 	fmt.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + string(target))
 	for {
@@ -29,7 +31,6 @@ func CalculatePoW(data []byte, target uint32) []byte {
 			data,
 			nonce.Bytes(),
 		}, []byte{})
-		// fmt.Println(hex.EncodeToString(hash))
 		hash := sha3.New512()
 		hash.Write(raw)
 		hashInt.SetBytes(hash.Sum(nil))
@@ -37,6 +38,14 @@ func CalculatePoW(data []byte, target uint32) []byte {
 			break
 		} else {
 			nonce = *nonce.Add(&nonce, one)
+			done <- false
+		}
+		fmt.Println(nonce.String())
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-done:
+			continue
 		}
 	}
 	return nonce.Bytes()
