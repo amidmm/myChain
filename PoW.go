@@ -24,6 +24,7 @@ func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
 	sign := p.Sign
 	p.Nonce = []byte{}
 	p.Sign = []byte{}
+	p.Hash = []byte{}
 	p.Diff = target
 	data, err := proto.Marshal(p)
 	if err != nil {
@@ -86,8 +87,10 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	}
 	nonce := data.Nonce
 	sign := data.Sign
+	prevHash := data.Hash
 	data.Nonce = []byte{}
 	data.Sign = []byte{}
+	data.Hash = []byte{}
 	raw, err := proto.Marshal(&data)
 	if err != nil {
 		log.Println(err)
@@ -104,10 +107,12 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	if hashInt.Cmp(diff) == -1 {
 		data.Sign = sign
 		data.Nonce = nonce
+		data.Hash = prevHash
 		return true, nil
 	} else {
 		data.Sign = sign
 		data.Nonce = nonce
+		data.Hash = prevHash
 		return false, nil
 	}
 }
