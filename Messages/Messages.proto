@@ -17,43 +17,66 @@ message packet{
     bytes                       nonce=4;
     uint64                      diff=5;
     bytes                       hash=6;
+    uint64                      current_block_number=7;
+    bytes                       addr=13;  
+    bytes                       sign=14;
     oneof data{
-        block           blockData=7;
-        bundle          bundleData=8;
-        rep             repData=9;
-        weak_req        weakData=10;
-        sanity_check    sanityData=11;
+        block           blockData=8;
+        bundle          bundleData=9;
+        rep             repData=10;
+        weak_req        weakData=11;
+        sanity_check    sanityData=12;
     }
 }
 message block {
     repeated weak_req       reqs=1;
     repeated bundle         bundles=2;
-    repeated sanity_check   sanities=3;
+    repeated sanity_check   sanities=3;    
 }
 message bundle {
     enum type{
         POWERFUL=0;
         WEAK=1;
     }
-    bytes       hash=1;
-    repeated tx transactions=2;
-    bytes       verify1=3;
-    bytes       verify2=4;
-    uint64      block_number=5;
+    type        bundle_type=1;
+    bytes       hash=2;
+    repeated tx transactions=3;
+    bytes       verify1=4;
+    bytes       verify2=5;
 }
 message tx{
     bytes   hash =1;
     bytes   bundle_hash=6;
-    bytes   refTx=2;
+    bytes   refTx=2;    //This can be both Tangle coins and Blockchain coins
     bytes   sign=3;
     int64   value=4;
+    bytes   tag=5;      //This is used for proof-of-payment-request
 }
 message weak_req {
     bytes   hash=1;
-    bytes   sign=2;
-    uint32  total=3;
+    uint32  total=2;
 }
 message rep {
+    enum type{
+        POPR=0;     //Same as an empty rep, the addr is the recipient
+        POPRA=1;    //TODO: Same as an empty rep, the addr is the hash of POPR 
+        REVIEW=2;
+        INITIAL=3;
+    }
+    type    hash=1;
+    bytes   addr=2;
+    review  rep_review=3;
+}
+message review {
+    uint32  rate=1;
+    uint32  confidence=2;
+    bytes   ipfs_review=3;   
+}
+message initial {
+    bundle  p_o_burn=1;
+    bytes   service=2;
+    bytes   owner_addr=3;   //optional
+    bytes   ipfs_detail=4;
 }
 message sanity_check {
 }
