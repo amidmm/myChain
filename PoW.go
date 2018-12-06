@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -15,9 +16,11 @@ type pow struct {
 	target  uint32
 }
 
-func CalculatePoW(ctx context.Context, data []byte, target uint32) []byte {
+// calcuate the PoW of data
+func CalculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, error) {
+	// 512 as we are using sha3_512
 	if target > 512 {
-		panic("Wrong target value!")
+		return []byte{}, errors.New("Wrong target value!")
 	}
 	diff := big.NewInt(1)
 	var nonce big.Int
@@ -43,10 +46,10 @@ func CalculatePoW(ctx context.Context, data []byte, target uint32) []byte {
 		fmt.Println(nonce.String())
 		select {
 		case <-ctx.Done():
-			return nil
+			return []byte{}, errors.New("Calculation canceled")
 		case <-done:
 			continue
 		}
 	}
-	return nonce.Bytes()
+	return nonce.Bytes(), nil
 }
