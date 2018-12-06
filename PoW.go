@@ -20,9 +20,27 @@ type pow struct {
 	target  uint32
 }
 
+func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
+	sign := p.Sign
+	p.Nonce = []byte{}
+	p.Sign = []byte{}
+	p.Diff = target
+	data, err := proto.Marshal(p)
+	if err != nil {
+		return err
+	}
+	nonce, err := calculatePoW(ctx, data, target)
+	if err != nil {
+		return err
+	}
+	p.Nonce = nonce
+	p.Sign = sign
+	return nil
+}
+
 // calcuate the PoW of data
 // this is done in Data + nonce formate
-func CalculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, error) {
+func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, error) {
 	// 512 as we are using sha3_512
 	if target > 512 {
 		return []byte{}, errors.New("wrong target value")
