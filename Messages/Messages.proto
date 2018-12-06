@@ -15,7 +15,7 @@ message packet{
     google.protobuf.Timestamp   timestamp =2;
     bytes                       prev=3;
     bytes                       nonce=4;    //In production nonce should be number //Not included for pow
-    uint64                      diff=5;     //Not included for pow
+    uint32                      diff=5;     //Not included for pow?
     bytes                       hash=6;
     uint64                      current_block_number=7;
     bytes                       addr=13;  
