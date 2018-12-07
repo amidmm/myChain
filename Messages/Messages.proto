@@ -16,7 +16,7 @@ message packet{
     bytes                       prev=3;
     bytes                       nonce=4;    //In production nonce should be number //Not included for pow
     uint32                      diff=5;     //Not included for pow?
-    bytes                       hash=6;
+    bytes                       hash=6;     //Not included for PoW
     uint64                      current_block_number=7;
     bytes                       addr=13;  
     bytes                       sign=14;    //Not included for pow
@@ -30,8 +30,12 @@ message packet{
 }
 message block {
     repeated weak_req       reqs=1;
-    repeated bundle         bundles=2;
-    repeated sanity_check   sanities=3;    
+    repeated HashArray      bundleHashs=2;
+    repeated sanity_check   sanities=3;
+    tx                      coinbase=4; //TODO: Do we need this?    
+}
+message HashArray {
+    bytes   hash=1;
 }
 message bundle {
     enum type{
