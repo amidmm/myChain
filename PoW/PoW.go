@@ -39,7 +39,7 @@ func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
 	return nil
 }
 
-// calcuate the PoW of data
+// calculatePoW calcuates the PoW of data
 // this is done in Data + nonce formate
 func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, error) {
 	// 512 as we are using sha3_512
@@ -77,7 +77,7 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 	return nonce.Bytes(), nil
 }
 
-//Validate PoW of given Packet
+// ValidatePoW validates PoW of given Packet
 func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	var hashInt big.Int
 	diff := big.NewInt(1)
@@ -117,6 +117,7 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	}
 }
 
+// SetHash sets the hash of passed packet
 func SetHash(p *msg.Packet) error {
 	hash := sha3.New512()
 	raw, err := proto.Marshal(p)
