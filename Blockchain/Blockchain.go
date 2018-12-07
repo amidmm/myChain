@@ -28,9 +28,13 @@ type BlockchainIterator struct {
 	Err error
 }
 
+var DataBase *leveldb.DB = nil
+
 // OpenBlockChain opens blockchain Database
-//TODO: fix multiple call problem
 func OpenBlockChain() (*leveldb.DB, error) {
+	if DataBase != nil {
+		return DataBase, nil
+	}
 	s, err := storage.OpenFile(Consts.BlockchainDB, false)
 	if err != nil {
 		return nil, err
@@ -39,6 +43,7 @@ func OpenBlockChain() (*leveldb.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	DataBase = db
 	return db, nil
 }
 
