@@ -24,9 +24,12 @@ type Blockchain struct {
 }
 type BlockchainIterator struct {
 	Tip msg.Packet
+	DB  *leveldb.DB
 	Err error
 }
 
+// OpenBlockChain opens blockchain Database
+//TODO: fix multiple call problem
 func OpenBlockChain() (*leveldb.DB, error) {
 	s, err := storage.OpenFile(Consts.BlockchainDB, false)
 	if err != nil {
@@ -131,5 +134,57 @@ func (b *Blockchain) AddBlock(p *msg.Packet) error {
 	if err != nil {
 		return err
 	}
+	b.Tip = p
+	return nil
+}
+
+//Prev returns the prev block of the BlockchainIterator
+func (b *BlockchainIterator) Prev() bool {
+	if b.Tip.Prev == nil {
+		return false
+	}
+	db := b.DB
+	rawBlock, err := db.Get(bytes.Join(
+		[][]byte{[]byte("b"), b.Tip.Prev}, []byte{}),
+		nil)
+	if err != nil {
+		b.Err = err
+		return false
+	}
+	r := &msg.Packet{}
+	err = proto.Unmarshal(rawBlock, r)
+	if err != nil {
+		b.Err = err
+		return false
+	}
+	b.Tip = *r
+	return true
+}
+
+// Value retrive the current value for iterator
+func (b *BlockchainIterator) Value() (*msg.Packet, error) {
+	if b.Err != nil {
+		return nil, b.Err
+	}
+	return &b.Tip, nil
+}
+
+// ResetErr rests error value for iterator
+func (b *BlockchainIterator) ResetErr() {
+	b.Err = nil
+}
+
+// InitIter initalize the iterator for a blockchain
+func (b *BlockchainIterator) InitIter(blockchain *Blockchain) error {
+	if blockchain.DB == nil {
+		db, err := OpenBlockChain()
+		if err != nil {
+			b.Err = err
+			return err
+		}
+		blockchain.DB = db
+		b.DB = db
+	}
+	b.DB = blockchain.DB
 	return nil
 }
