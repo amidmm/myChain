@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/syndtr/goleveldb/leveldb/storage"
+
 	"github.com/golang/protobuf/ptypes"
 
 	"github.com/amidmm/MyChain/PoW"
@@ -16,18 +18,36 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-type blockchain struct {
+type Blockchain struct {
 	Tip *msg.Packet
+	DB  *leveldb.DB
+}
+type BlockchainIterator struct {
+	Tip msg.Packet
+	Err error
 }
 
-func NewBlockchain() (*blockchain, error) {
-	db, err := leveldb.OpenFile(Consts.BlockchainDB, nil)
+func OpenBlockChain() (*leveldb.DB, error) {
+	s, err := storage.OpenFile(Consts.BlockchainDB, false)
+	if err != nil {
+		return nil, err
+	}
+	db, err := leveldb.Open(s, nil)
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+//NewBlockchain creates a new blockchain
+func NewBlockchain() (*Blockchain, error) {
+	db, err := OpenBlockChain()
 	if err != nil {
 		return nil, err
 	}
 	_, err = db.Get([]byte("l"), nil)
 	if err == leveldb.ErrNotFound {
-		b := blockchain{}
+		b := Blockchain{}
 		genesis := GenesisBlock()
 		//TODO: use add block instead
 		b.Tip = genesis
@@ -42,18 +62,15 @@ func NewBlockchain() (*blockchain, error) {
 		if err != nil {
 			return nil, err
 		}
+		b.DB = db
 		return &b, nil
 	}
 	return nil, Consts.ErrBlockchainExists
 }
 
-//Reads the last block of blockchain
-func ReadBlockchainTip() (*msg.Packet, error) {
-	db, err := leveldb.OpenFile(Consts.BlockchainDB, nil)
-	defer db.Close()
-	if err != nil {
-		return nil, err
-	}
+//ReadBlockchainTip reads the last block of blockchain
+func (b *Blockchain) ReadBlockchainTip() (*msg.Packet, error) {
+	db := b.DB
 	value, err := db.Get([]byte("l"), nil)
 	if err != nil {
 		return nil, err
@@ -73,11 +90,11 @@ func ReadBlockchainTip() (*msg.Packet, error) {
 	case *msg.Packet_BlockData:
 		return block, nil
 	default:
-		return nil, errors.New("wrong Packet type as last block")
+		panic(errors.New("wrong Packet type as last block"))
 	}
 }
 
-//Generate the first block
+//GenesisBlock generates the first block
 func GenesisBlock() *msg.Packet {
 	//TODO: change addrs, Sign and Bundle to a valid one
 	packet := &msg.Packet{}
@@ -97,4 +114,22 @@ func GenesisBlock() *msg.Packet {
 	PoW.SetPoW(context.Background(), packet, 1)
 	PoW.SetHash(packet)
 	return packet
+}
+
+// AddBlock add new block to current blockchain
+// Tip: validation should get done before hand
+func (b *Blockchain) AddBlock(p *msg.Packet) error {
+	db := b.DB
+	raw, _ := proto.Marshal(p)
+	err := db.Put(
+		bytes.Join([][]byte{
+			[]byte("b"), p.Hash}, []byte{}), raw, nil)
+	if err != nil {
+		return err
+	}
+	err = db.Put([]byte("l"), p.Hash, nil)
+	if err != nil {
+		return err
+	}
+	return nil
 }
