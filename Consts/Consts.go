@@ -14,4 +14,5 @@ var (
 	ErrCanceled         = errors.New("calculation canceled")
 	ErrWrongHeight      = errors.New("height limitation exceeded")
 	ErrRetargetRetriv   = errors.New("unable to obtain previous retarget block")
+	ErrNotImplemented   = errors.New("not implemented")
 )
