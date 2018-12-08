@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+
+	"github.com/golang/protobuf/jsonpb"
 
 	"github.com/syndtr/goleveldb/leveldb/storage"
 
@@ -191,5 +194,30 @@ func (b *BlockchainIterator) InitIter(blockchain *Blockchain) error {
 		b.DB = db
 	}
 	b.DB = blockchain.DB
+	b.Tip = *blockchain.Tip
+	return nil
+}
+
+//ExportToJSON exports Blockchain as JSON
+func (b *Blockchain) ExportToJSON(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := bytes.NewBuffer([]byte{})
+	buf.WriteString("[")
+	m := jsonpb.Marshaler{}
+	iter := &BlockchainIterator{}
+	iter.InitIter(b)
+	v, _ := iter.Value()
+	_ = m.Marshal(buf, v)
+	for iter.Prev() {
+		buf.WriteString(",")
+		v, _ := iter.Value()
+		_ = m.Marshal(buf, v)
+	}
+	buf.WriteString("]")
+	f.Write(buf.Bytes())
 	return nil
 }
