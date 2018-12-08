@@ -206,18 +206,42 @@ func (b *Blockchain) ExportToJSON(path string) error {
 	}
 	defer f.Close()
 	buf := bytes.NewBuffer([]byte{})
-	buf.WriteString("[")
+	_, err = buf.WriteString("[")
 	m := jsonpb.Marshaler{}
 	iter := &BlockchainIterator{}
-	iter.InitIter(b)
-	v, _ := iter.Value()
-	_ = m.Marshal(buf, v)
-	for iter.Prev() {
-		buf.WriteString(",")
-		v, _ := iter.Value()
-		_ = m.Marshal(buf, v)
+	err = iter.InitIter(b)
+	if err != nil {
+		return err
 	}
-	buf.WriteString("]")
-	f.Write(buf.Bytes())
+	v, err := iter.Value()
+	if err != nil {
+		return err
+	}
+	err = m.Marshal(buf, v)
+	if err != nil {
+		return err
+	}
+	for iter.Prev() {
+		_, err = buf.WriteString(",")
+		if err != nil {
+			return err
+		}
+		v, err := iter.Value()
+		if err != nil {
+			return err
+		}
+		err = m.Marshal(buf, v)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = buf.WriteString("]")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
 	return nil
 }
