@@ -59,6 +59,7 @@ message tx{
 message weak_req {
     bytes   hash=1;
     uint32  total=2;
+    bundle  burn=3;     // Prevent DoS with weak_req
 }
 message rep {
     enum type{
