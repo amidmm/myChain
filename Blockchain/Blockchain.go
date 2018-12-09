@@ -3,7 +3,6 @@ package Blockchain
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 
 	"github.com/amidmm/MyChain/PoW"
+	"github.com/amidmm/MyChain/Transaction"
 
 	"github.com/golang/protobuf/proto"
 
@@ -142,7 +142,7 @@ func (b *Blockchain) ReadBlockchainTip() (*msg.Packet, error) {
 	case *msg.Packet_BlockData:
 		return block, nil
 	default:
-		panic(errors.New("wrong Packet type as last block"))
+		panic(Consts.ErrNotABlock)
 	}
 }
 
@@ -310,7 +310,7 @@ func (b *Blockchain) ReadBlock(hash []byte) (*msg.Packet, error) {
 	case *msg.Packet_BlockData:
 		return block, nil
 	default:
-		panic(errors.New("wrong Packet type as last block"))
+		panic(Consts.ErrNotABlock)
 	}
 }
 
@@ -358,4 +358,82 @@ func (b *Blockchain) CalcNextRequiredDifficulty() (uint32, error) {
 func (b *Blockchain) NextRetarget() uint64 {
 	retarget := b.blocksPerRetarget - (b.Tip.CurrentBlockNumber % b.blocksPerRetarget)
 	return retarget + b.Tip.CurrentBlockNumber
+}
+
+func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
+	switch p.Data.(type) {
+	case *msg.Packet_BlockData:
+		b := p.GetBlockData()
+		v, err := ValidateWeak(b)
+		// NotImplemented
+		// if err != nil {
+		// 	return false, err
+		// }
+		if !v {
+			return false, nil
+		}
+		bun, err := ValidateBundleHash(b)
+		// NotImplemented
+		// if err != nil {
+		// 	return false, err
+		// }
+		if !bun {
+			return false, nil
+		}
+		san, err := ValidateSanity(b)
+		// NotImplemented
+		// if err != nil {
+		// 	return false, err
+		// }
+		if !san {
+			return false, nil
+		}
+		coin, err := ValidateCoinbase(bc, b)
+		// NotImplemented
+		// if err != nil {
+		// 	return false, err
+		// }
+		if !coin {
+			return false, nil
+		}
+		// Remove after implementation
+		err = err
+	default:
+		return false, Consts.ErrNotABlock
+	}
+	return true, nil
+}
+
+func ValidateWeak(b *msg.Block) (bool, error) {
+	return true, Consts.ErrNotImplemented
+}
+func ValidateBundleHash(b *msg.Block) (bool, error) {
+	return true, Consts.ErrNotImplemented
+}
+func ValidateSanity(b *msg.Block) (bool, error) {
+	return true, Consts.ErrNotImplemented
+}
+func ValidateCoinbase(bc *Blockchain, b *msg.Block) (bool, error) {
+	t, err := Transaction.ValidateTx(b.Coinbase,true)
+	// NotImplemented
+	// if err != nil {
+	// 	return false, err
+	// }
+	// Remove after implementation
+	err = err
+	if !t {
+		return false, nil
+	}
+	coinBase, _ := bc.ExpectedBlockReward()
+	if b.Coinbase.Value > coinBase {
+		return false, nil
+	}
+	return true, Consts.ErrNotABlock
+}
+
+func (b *Blockchain) ExpectedBlockReward() (int64, error) {
+	// 9 223 372,036 854 775 807
+	// 1 000 000,000 000 000 001
+	//TODO: should be dynamic
+	return 100000000000, Consts.ErrNotImplemented
 }
