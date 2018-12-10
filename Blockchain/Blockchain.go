@@ -18,6 +18,7 @@ import (
 	"github.com/amidmm/MyChain/Packet"
 	"github.com/amidmm/MyChain/PoW"
 	"github.com/amidmm/MyChain/Transaction"
+	"github.com/amidmm/MyChain/Weak"
 
 	"github.com/golang/protobuf/proto"
 
@@ -366,21 +367,11 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 	switch p.Data.(type) {
 	case *msg.Packet_BlockData:
 		b := p.GetBlockData()
-		v, err := ValidateWeak(b)
-		// NotImplemented
-		// if err != nil {
-		// 	return false, err
-		// }
-		if !v {
-			return false, nil
+		if v, err := ValidateWeak(b); err != nil || !v {
+			return false, err
 		}
-		bun, err := ValidatePacketHashs(b)
-		// NotImplemented
-		// if err != nil {
-		// 	return false, err
-		// }
-		if !bun {
-			return false, nil
+		if bun, err := ValidatePacketHashs(b); err != nil || !bun {
+			return false, err
 		}
 		san, err := ValidateSanity(b)
 		// NotImplemented
@@ -407,23 +398,27 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 }
 
 func ValidateWeak(b *msg.Block) (bool, error) {
-	return true, Consts.ErrNotImplemented
+	for _, v := range b.Reqs {
+		if t, err := Weak.ValidateWeakReq(v); err != nil || !t {
+			return false, err
+		}
+	}
+	return true, nil
 }
 func ValidatePacketHashs(b *msg.Block) (bool, error) {
 	tipCount := make(map[string]int)
 	for _, h := range b.PacketHashs {
 		p, _ := Packet.GetPacket(h.Hash)
-		if v, _ := Bundle.ValidateBundle(p.GetBundleData(), true); !v {
-			return false, nil
+		if v, err := Bundle.ValidateBundle(p.GetBundleData(), true); !v {
+			return false, err
 		}
-		// not implemented errors
 		tipCount[string(p.GetBundleData().Verify1)]++
 		tipCount[string(p.GetBundleData().Verify2)]++
 		if tipCount[string(p.GetBundleData().Verify1)] > 1 || tipCount[string(p.GetBundleData().Verify2)] > 1 {
 			return false, nil
 		}
 	}
-	return true, Consts.ErrNotImplemented
+	return true, nil
 }
 func ValidateSanity(b *msg.Block) (bool, error) {
 	return true, Consts.ErrNotImplemented
