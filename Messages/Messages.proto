@@ -30,7 +30,7 @@ message packet{
 }
 message block {
     repeated weak_req       reqs=1;
-    repeated HashArray      bundleHashs=2;
+    repeated HashArray      packetHashs=2;  // Packet of bundles
     repeated sanity_check   sanities=3;
     tx                      coinbase=4; //TODO: Do we need this?    
 }
