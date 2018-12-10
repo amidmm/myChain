@@ -14,6 +14,8 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 
+	"github.com/amidmm/MyChain/Bundle"
+	"github.com/amidmm/MyChain/Packet"
 	"github.com/amidmm/MyChain/PoW"
 	"github.com/amidmm/MyChain/Transaction"
 
@@ -160,7 +162,7 @@ func GenesisBlock() *msg.Packet {
 	block := &msg.Block{}
 	block.Reqs = []*msg.WeakReq{}
 	block.Sanities = []*msg.SanityCheck{}
-	block.BundleHashs = []*msg.HashArray{}
+	block.PacketHashs = []*msg.HashArray{}
 	block.Coinbase = &msg.Tx{}
 	packet.Data = &msg.Packet_BlockData{block}
 	PoW.SetPoW(context.Background(), packet, 1)
@@ -372,7 +374,7 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 		if !v {
 			return false, nil
 		}
-		bun, err := ValidateBundleHash(b)
+		bun, err := ValidatePacketHashs(b)
 		// NotImplemented
 		// if err != nil {
 		// 	return false, err
@@ -407,20 +409,30 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 func ValidateWeak(b *msg.Block) (bool, error) {
 	return true, Consts.ErrNotImplemented
 }
-func ValidateBundleHash(b *msg.Block) (bool, error) {
+func ValidatePacketHashs(b *msg.Block) (bool, error) {
+	tipCount := make(map[string]int)
+	for _, h := range b.PacketHashs {
+		p, _ := Packet.GetPacket(h.Hash)
+		if v, _ := Bundle.ValidateBundle(p.GetBundleData(), true); !v {
+			return false, nil
+		}
+		// not implemented errors
+		tipCount[string(p.GetBundleData().Verify1)]++
+		tipCount[string(p.GetBundleData().Verify2)]++
+		if tipCount[string(p.GetBundleData().Verify1)] > 1 || tipCount[string(p.GetBundleData().Verify2)] > 1 {
+			return false, nil
+		}
+	}
 	return true, Consts.ErrNotImplemented
 }
 func ValidateSanity(b *msg.Block) (bool, error) {
 	return true, Consts.ErrNotImplemented
 }
 func ValidateCoinbase(bc *Blockchain, b *msg.Block) (bool, error) {
-	t, err := Transaction.ValidateTx(b.Coinbase,true)
-	// NotImplemented
-	// if err != nil {
-	// 	return false, err
-	// }
-	// Remove after implementation
-	err = err
+	t, err := Transaction.ValidateTx(b.Coinbase, true)
+	if err != nil {
+		return false, err
+	}
 	if !t {
 		return false, nil
 	}
