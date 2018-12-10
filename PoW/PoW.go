@@ -3,8 +3,6 @@ package PoW
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
-	"fmt"
 	"log"
 	"math/big"
 
@@ -22,9 +20,9 @@ type pow struct {
 
 func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
 	sign := p.Sign
-	p.Nonce = []byte{}
-	p.Sign = []byte{}
-	p.Hash = []byte{}
+	p.Nonce = nil
+	p.Sign = nil
+	p.Hash = nil
 	p.Diff = target
 	data, err := proto.Marshal(p)
 	if err != nil {
@@ -52,7 +50,7 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 	one := big.NewInt(1)
 	done := make(chan bool, 1)
 	diff.Lsh(diff, uint(512-target))
-	fmt.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + string(target))
+	// fmt.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + )
 	for {
 		raw := bytes.Join([][]byte{
 			data,
@@ -88,9 +86,9 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	nonce := data.Nonce
 	sign := data.Sign
 	prevHash := data.Hash
-	data.Nonce = []byte{}
-	data.Sign = []byte{}
-	data.Hash = []byte{}
+	data.Nonce = nil
+	data.Sign = nil
+	data.Hash = nil
 	raw, err := proto.Marshal(&data)
 	if err != nil {
 		log.Println(err)
