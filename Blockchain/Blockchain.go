@@ -353,7 +353,9 @@ func (b *Blockchain) CalcNextRequiredDifficulty() (uint32, error) {
 	}
 	targetTimeSpan := int64(b.chainParams.TargetTimespan / time.Second)
 	diff := int64(b.Tip.Diff) * (targetTimeSpan / adjustedTimespan)
-	fmt.Printf("diff :%d\n", diff)
+	if uint32(diff) < Consts.PoWLimit {
+		return Consts.PoWLimit, nil
+	}
 	return uint32(diff), nil
 }
 
