@@ -175,6 +175,7 @@ func GenesisBlock() *msg.Packet {
 // Tip: validation should get done before hand
 func (b *Blockchain) AddBlock(p *msg.Packet) error {
 	b.chainLock.Lock()
+	defer b.chainLock.Unlock()
 	// TODO: change the expected target
 	db := b.DB
 	raw, _ := proto.Marshal(p)
@@ -189,7 +190,6 @@ func (b *Blockchain) AddBlock(p *msg.Packet) error {
 		return err
 	}
 	b.Tip = p
-	b.chainLock.Unlock()
 	return nil
 }
 
@@ -334,8 +334,8 @@ func (b *Blockchain) RelativeAncestor(p *msg.Packet, distance uint64) (*msg.Pack
 
 func (b *Blockchain) CalcNextRequiredDifficulty() (uint32, error) {
 	b.chainLock.Lock()
+	defer b.chainLock.Unlock()
 	if (b.Tip.CurrentBlockNumber+1)%b.NextRetarget() != 0 {
-		b.chainLock.Unlock()
 		return b.Tip.Diff, nil
 	}
 	fmt.Println("string")
@@ -353,7 +353,6 @@ func (b *Blockchain) CalcNextRequiredDifficulty() (uint32, error) {
 	}
 	targetTimeSpan := int64(b.chainParams.TargetTimespan / time.Second)
 	diff := int64(b.Tip.Diff) * (targetTimeSpan / adjustedTimespan)
-	b.chainLock.Unlock()
 	fmt.Printf("diff :%d\n", diff)
 	return uint32(diff), nil
 }
@@ -409,7 +408,7 @@ func ValidatePacketHashs(b *msg.Block) (bool, error) {
 	tipCount := make(map[string]int)
 	for _, h := range b.PacketHashs {
 		p, _ := Packet.GetPacket(h.Hash)
-		if v, err := Bundle.ValidateBundle(p.GetBundleData(), true); !v {
+		if v, err := Bundle.ValidateBundle(p.GetBundleData(), true); err != nil || !v {
 			return false, err
 		}
 		tipCount[string(p.GetBundleData().Verify1)]++
@@ -424,12 +423,9 @@ func ValidateSanity(b *msg.Block) (bool, error) {
 	return true, Consts.ErrNotImplemented
 }
 func ValidateCoinbase(bc *Blockchain, b *msg.Block) (bool, error) {
-	t, err := Transaction.ValidateTx(b.Coinbase, true)
-	if err != nil {
+
+	if t, err := Transaction.ValidateTx(b.Coinbase, true); err != nil || !t {
 		return false, err
-	}
-	if !t {
-		return false, nil
 	}
 	coinBase, _ := bc.ExpectedBlockReward()
 	if b.Coinbase.Value > coinBase {
