@@ -3,8 +3,10 @@ package PoW
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"log"
 	"math/big"
+	"strconv"
 
 	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
@@ -50,7 +52,7 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 	one := big.NewInt(1)
 	done := make(chan bool, 1)
 	diff.Lsh(diff, uint(512-target))
-	// fmt.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + )
+	log.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + strconv.Itoa(int(target)))
 	for {
 		raw := bytes.Join([][]byte{
 			data,
@@ -72,6 +74,7 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 			continue
 		}
 	}
+	log.Println("Found nonce for " + hex.EncodeToString(sha3.New224().Sum(data)) + " :" + nonce.String())
 	return nonce.Bytes(), nil
 }
 
@@ -89,6 +92,11 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	data.Nonce = nil
 	data.Sign = nil
 	data.Hash = nil
+	defer func() {
+		data.Sign = sign
+		data.Nonce = nonce
+		data.Hash = prevHash
+	}()
 	raw, err := proto.Marshal(&data)
 	if err != nil {
 		log.Println(err)
@@ -103,14 +111,8 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 	hashInt.SetBytes(hash.Sum(nil))
 	diff.Lsh(diff, uint(512-target))
 	if hashInt.Cmp(diff) == -1 {
-		data.Sign = sign
-		data.Nonce = nonce
-		data.Hash = prevHash
 		return true, nil
 	} else {
-		data.Sign = sign
-		data.Nonce = nonce
-		data.Hash = prevHash
 		return false, nil
 	}
 }
