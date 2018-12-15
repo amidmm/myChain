@@ -9,7 +9,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func GetWeakReqHash(r *msg.WeakReq) []byte {
+func GetWeakReqHash(r msg.WeakReq) []byte {
 	r.Hash = nil
 	hash := sha3.New512()
 	var total []byte
@@ -20,7 +20,7 @@ func GetWeakReqHash(r *msg.WeakReq) []byte {
 }
 
 func ValidateWeakReq(r *msg.WeakReq) (bool, error) {
-	if bytes.Compare(r.Hash, GetWeakReqHash(r)) != 0 {
+	if bytes.Compare(r.Hash, GetWeakReqHash(*r)) != 0 {
 		return false, nil
 	}
 	if v, err := Bundle.ValidateBundle(r.Burn, false); err != nil || !v {

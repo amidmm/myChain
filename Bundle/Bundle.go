@@ -48,7 +48,7 @@ func GetBundleHash(bun msg.Bundle) []byte {
 	tx := bun.Transactions
 	bun.Transactions = nil
 	for _, v := range tx {
-		hash.Write(Transaction.GetTxHash(v))
+		hash.Write(Transaction.GetTxHash(*v))
 	}
 	raw, _ := proto.Marshal(&bun)
 	hash.Write(raw)

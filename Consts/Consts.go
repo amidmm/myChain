@@ -12,12 +12,13 @@ const UserDB = "Data/user_%s"
 const PoWLimit uint32 = 15
 
 var (
-	ErrBlockchainExists = errors.New(Name + " blockchain exists")
-	ErrWrongTarget      = errors.New("wrong target value")
-	ErrCanceled         = errors.New("calculation canceled")
-	ErrWrongHeight      = errors.New("height limitation exceeded")
-	ErrRetargetRetriv   = errors.New("unable to obtain previous retarget block")
-	ErrNotImplemented   = errors.New("not implemented")
-	ErrNotABlock        = errors.New("wrong Packet type as last block")
-	ErrWrongBlockHash   = errors.New("wrong hash of current block for packetHashes")
+	ErrBlockchainExists  = errors.New(Name + " blockchain exists")
+	ErrWrongTarget       = errors.New("wrong target value")
+	ErrCanceled          = errors.New("calculation canceled")
+	ErrWrongHeight       = errors.New("height limitation exceeded")
+	ErrRetargetRetriv    = errors.New("unable to obtain previous retarget block")
+	ErrNotImplemented    = errors.New("not implemented")
+	ErrNotABlock         = errors.New("wrong Packet type as last block")
+	ErrWrongBlockHash    = errors.New("wrong hash of current block for packetHashes")
+	ErrWrongBlockRewared = errors.New("bigger block reward than expected")
 )

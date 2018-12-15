@@ -4,6 +4,7 @@ import (
 	"github.com/amidmm/MyChain/Account"
 	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
+	"github.com/go-ethereum/crypto/sha3"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -31,4 +32,25 @@ func GetPacketSign(p *msg.Packet, u Account.User) ([]byte, error) {
 		return nil, err
 	}
 	return sign, nil
+}
+
+// SetHash sets the hash of passed packet
+func SetHash(p *msg.Packet) error {
+	hash, err := GetHash(*p)
+	if err != nil {
+		return err
+	}
+	p.Hash = hash
+	return nil
+}
+
+func GetHash(p msg.Packet) ([]byte, error) {
+	p.Hash = nil
+	hash := sha3.New512()
+	raw, err := proto.Marshal(&p)
+	if err != nil {
+		return nil, err
+	}
+	hash.Write(raw)
+	return hash.Sum(nil), nil
 }

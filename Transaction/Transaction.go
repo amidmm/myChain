@@ -2,7 +2,6 @@ package Transaction
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"sync"
 
@@ -40,12 +39,12 @@ func OpenUTXO() error {
 }
 
 func ValidateTx(t *msg.Tx, coinbase bool) (bool, error) {
-	if bytes.Compare(t.Hash, GetTxHash(t)) != 0 {
+	if bytes.Compare(t.Hash, GetTxHash(*t)) != 0 {
 		return false, nil
 	}
 	if coinbase {
+		// not implemented
 		if t.RefTx != nil {
-			fmt.Println("string")
 			return false, nil
 		} else if v, _ := ValidateTxSign(t); !v {
 			return false, nil
@@ -55,16 +54,12 @@ func ValidateTx(t *msg.Tx, coinbase bool) (bool, error) {
 	return true, Consts.ErrNotImplemented
 }
 
-func GetTxHash(t *msg.Tx) []byte {
-	exBundleHash := t.BundleHash
-	exHash := t.Hash
+func GetTxHash(t msg.Tx) []byte {
 	t.BundleHash = nil
 	t.Hash = nil
-	raw, _ := proto.Marshal(t)
+	raw, _ := proto.Marshal(&t)
 	hash := sha3.New512()
 	hash.Write(raw)
-	t.BundleHash = exBundleHash
-	t.Hash = exHash
 	return hash.Sum(nil)
 }
 
@@ -126,7 +121,7 @@ func PutUTXO(t *msg.Tx) error {
 	if err != nil {
 		return err
 	}
-	hash := GetTxHash(t)
+	hash := GetTxHash(*t)
 	err = UTXOdatabase.Put(hash, raw, nil)
 	if err != nil {
 		return err
@@ -137,7 +132,7 @@ func PutUTXO(t *msg.Tx) error {
 func UnUTXO(t *msg.Tx) error {
 	UTXOlock.Lock()
 	defer UTXOlock.Unlock()
-	hash := GetTxHash(t)
+	hash := GetTxHash(*t)
 	err := UTXOdatabase.Delete(hash, nil)
 	if err != nil {
 		return err

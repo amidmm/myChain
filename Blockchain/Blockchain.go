@@ -171,7 +171,7 @@ func GenesisBlock() *msg.Packet {
 	block.Coinbase = &msg.Tx{}
 	packet.Data = &msg.Packet_BlockData{block}
 	PoW.SetPoW(context.Background(), packet, 1)
-	PoW.SetHash(packet)
+	Packet.SetHash(packet)
 	return packet
 }
 
@@ -384,12 +384,7 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 		if !san {
 			return false, nil
 		}
-		coin, err := ValidateCoinbase(bc, b)
-		// NotImplemented
-		// if err != nil {
-		// 	return false, err
-		// }
-		if !coin {
+		if coin, err := ValidateCoinbase(bc, b); err != nil || !coin {
 			return false, nil
 		}
 		// Remove after implementation
@@ -436,9 +431,9 @@ func ValidateCoinbase(bc *Blockchain, b *msg.Block) (bool, error) {
 	}
 	coinBase, _ := bc.ExpectedBlockReward()
 	if b.Coinbase.Value > coinBase {
-		return false, nil
+		return false, Consts.ErrWrongBlockRewared
 	}
-	return true, Consts.ErrNotABlock
+	return true, nil
 }
 
 func (b *Blockchain) ExpectedBlockReward() (int64, error) {

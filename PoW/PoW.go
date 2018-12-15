@@ -116,15 +116,3 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 		return false, nil
 	}
 }
-
-// SetHash sets the hash of passed packet
-func SetHash(p *msg.Packet) error {
-	hash := sha3.New512()
-	raw, err := proto.Marshal(p)
-	if err != nil {
-		return err
-	}
-	hash.Write(raw)
-	p.Hash = hash.Sum(nil)
-	return nil
-}
