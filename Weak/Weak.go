@@ -15,7 +15,7 @@ func GetWeakReqHash(r *msg.WeakReq) []byte {
 	var total []byte
 	binary.LittleEndian.PutUint32(total, r.Total)
 	hash.Write(total)
-	hash.Write(Bundle.GetBundleHash(r.GetBurn()))
+	hash.Write(Bundle.GetBundleHash(*r.GetBurn()))
 	return hash.Sum(nil)
 }
 

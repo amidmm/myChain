@@ -19,4 +19,5 @@ var (
 	ErrRetargetRetriv   = errors.New("unable to obtain previous retarget block")
 	ErrNotImplemented   = errors.New("not implemented")
 	ErrNotABlock        = errors.New("wrong Packet type as last block")
+	ErrWrongBlockHash   = errors.New("wrong hash of current block for packetHashes")
 )
