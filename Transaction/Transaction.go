@@ -43,20 +43,27 @@ func ValidateTx(t *msg.Tx, coinbase bool) (bool, error) {
 		return false, nil
 	}
 	if coinbase {
-		// not implemented
-		if t.RefTx != nil {
-			return false, nil
-		} else if v, _ := ValidateTxSign(t); !v {
+		if t.RefTx != nil && t.BundleHash != nil {
 			return false, nil
 		}
 		return true, nil
 	}
-	return true, Consts.ErrNotImplemented
+	if t.Value < 0 {
+		if v, err := ValidateTxSign(t); err != nil || !v {
+			return false, err
+		}
+	} else {
+		if t.Sign == nil {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func GetTxHash(t msg.Tx) []byte {
 	t.BundleHash = nil
 	t.Hash = nil
+	t.Sign = nil
 	raw, _ := proto.Marshal(&t)
 	hash := sha3.New512()
 	hash.Write(raw)
