@@ -136,10 +136,20 @@ func PutUTXO(t *msg.Tx) error {
 	return nil
 }
 
-func UnUTXO(t *msg.Tx) error {
+func UnUTXO(t msg.Tx) error {
 	UTXOlock.Lock()
 	defer UTXOlock.Unlock()
-	hash := GetTxHash(*t)
+	hash := GetTxHash(t)
+	err := UTXOdatabase.Delete(hash, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnUTXOWithHash(hash []byte) error {
+	UTXOlock.Lock()
+	defer UTXOlock.Unlock()
 	err := UTXOdatabase.Delete(hash, nil)
 	if err != nil {
 		return err

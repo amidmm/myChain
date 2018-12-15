@@ -5,6 +5,7 @@ import (
 
 	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
+	"github.com/amidmm/MyChain/Synchronizer"
 	"github.com/amidmm/MyChain/Transaction"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/sha3"
@@ -58,4 +59,24 @@ func GetBundleHash(bun msg.Bundle) []byte {
 
 func ValidateVerify(bun *msg.Bundle) (bool, error) {
 	return true, Consts.ErrNotImplemented
+}
+
+func IncomeBundle(bun *msg.Bundle) (bool, error) {
+	if v, err := Synchronizer.HasBundleSeen(bun); err != nil || v {
+		return false, err
+	}
+	if v, err := ValidateBundle(bun, false); err != nil || !v {
+		return false, err
+	}
+	for _, tx := range bun.Transactions {
+		if tx.Value > 0 {
+			Transaction.PutUTXO(tx)
+		} else if tx.Value < 0 {
+			Transaction.UnUTXOWithHash(tx.RefTx)
+		}
+	}
+	// if v, err := ValidateVerify(bun); err != nil || !v {
+	// 	return false, err
+	// }
+	return true, nil
 }
