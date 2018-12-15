@@ -373,7 +373,7 @@ func (bc *Blockchain) ValidateBlock(p *msg.Packet) (bool, error) {
 		if v, err := ValidateWeak(b); err != nil || !v {
 			return false, err
 		}
-		if bun, err := ValidatePacketHashs(b); err != nil || !bun {
+		if bun, err := bc.ValidatePacketHashs(b); err != nil || !bun {
 			return false, err
 		}
 		san, err := ValidateSanity(b)
@@ -408,10 +408,13 @@ func ValidateWeak(b *msg.Block) (bool, error) {
 	}
 	return true, nil
 }
-func ValidatePacketHashs(b *msg.Block) (bool, error) {
+func (bc *Blockchain) ValidatePacketHashs(b *msg.Block) (bool, error) {
 	tipCount := make(map[string]int)
 	for _, h := range b.PacketHashs {
 		p, _ := Packet.GetPacket(h.Hash)
+		if bytes.Compare(p.CurrentBlockHash, bc.Tip.Hash) != 0 {
+			return false, Consts.ErrWrongBlockHash
+		}
 		if v, err := Bundle.ValidateBundle(p.GetBundleData(), true); err != nil || !v {
 			return false, err
 		}
