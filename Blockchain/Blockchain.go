@@ -3,7 +3,7 @@ package Blockchain
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -76,16 +76,20 @@ type BlockchainIterator struct {
 }
 
 var DataBase *leveldb.DB = nil
+var genericLock sync.Mutex
 
 // OpenBlockChain opens blockchain Database
 func OpenBlockChain() (*leveldb.DB, error) {
 	if DataBase != nil {
 		return DataBase, nil
 	}
+	genericLock.Lock()
+	defer genericLock.Unlock()
 	s, err := storage.OpenFile(Consts.BlockchainDB, false)
 	if err != nil {
 		return nil, err
 	}
+	defer s.Close()
 	db, err := leveldb.Open(s, nil)
 	if err != nil {
 		return nil, err
@@ -338,12 +342,10 @@ func (b *Blockchain) CalcNextRequiredDifficulty() (uint32, error) {
 	if (b.Tip.CurrentBlockNumber+1)%b.NextRetarget() != 0 {
 		return b.Tip.Diff, nil
 	}
-	fmt.Println("string")
 	firstNode, err := b.RelativeAncestor(b.Tip, b.blocksPerRetarget-2)
 	if err != nil {
 		return 0, Consts.ErrRetargetRetriv
 	}
-	fmt.Println("string")
 	actualTimespan := b.Tip.Timestamp.Seconds - firstNode.Timestamp.Seconds
 	adjustedTimespan := actualTimespan
 	if actualTimespan < b.minRetargetTimespan {
@@ -441,4 +443,16 @@ func (b *Blockchain) ExpectedBlockReward() (int64, error) {
 	// 1 000 000,000 000 000 001
 	//TODO: should be dynamic
 	return 100000000000, Consts.ErrNotImplemented
+}
+
+func (b *Blockchain) Close() error {
+	if b.DB == nil || DataBase == nil {
+		return leveldb.ErrClosed
+	}
+	b.chainLock.Lock()
+	DataBase = nil
+	b.DB.Close()
+	log.Println("Blockchain database is down...")
+	b.chainLock.Unlock()
+	return nil
 }
