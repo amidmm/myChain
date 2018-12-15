@@ -7,6 +7,7 @@ import (
 const Name = "myChain"
 const BlockchainDB string = "Data/blockchain"
 const TangleDB string = "Data/tangle"
+const UTXODB string = "Data/UTXO"
 const UserDB = "Data/user_%s"
 const PoWLimit uint32 = 15
 

@@ -3,6 +3,12 @@ package Transaction
 import (
 	"bytes"
 	"fmt"
+	"log"
+	"sync"
+
+	"github.com/syndtr/goleveldb/leveldb/storage"
+
+	"github.com/syndtr/goleveldb/leveldb"
 
 	"github.com/libp2p/go-libp2p-crypto"
 
@@ -13,6 +19,25 @@ import (
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/sha3"
 )
+
+var UTXOlock sync.Mutex
+var UTXOdatabase *leveldb.DB
+
+func OpenUTXO() error {
+	//needed to change if multiple blockchain allowed
+	UTXOlock.Lock()
+	defer UTXOlock.Unlock()
+	s, err := storage.OpenFile(Consts.UTXODB, false)
+	if err != nil {
+		return err
+	}
+	db, err := leveldb.Open(s, nil)
+	if err != nil {
+		return err
+	}
+	UTXOdatabase = db
+	return nil
+}
 
 func ValidateTx(t *msg.Tx, coinbase bool) (bool, error) {
 	if bytes.Compare(t.Hash, GetTxHash(t)) != 0 {
@@ -84,5 +109,49 @@ func ValidateTxSign(t *msg.Tx) (bool, error) {
 }
 
 func GetUTXO(hash []byte) (*msg.Tx, error) {
-	return nil, Consts.ErrNotImplemented
+	raw, err := UTXOdatabase.Get(hash, nil)
+	if err != nil {
+		return nil, err
+	}
+	t := &msg.Tx{}
+	err = proto.Unmarshal(raw, t)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func PutUTXO(t *msg.Tx) error {
+	raw, err := proto.Marshal(t)
+	if err != nil {
+		return err
+	}
+	hash := GetTxHash(t)
+	err = UTXOdatabase.Put(hash, raw, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnUTXO(t *msg.Tx) error {
+	UTXOlock.Lock()
+	defer UTXOlock.Unlock()
+	hash := GetTxHash(t)
+	err := UTXOdatabase.Delete(hash, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func CloseUTXO() error {
+	UTXOlock.Lock()
+	defer UTXOlock.Unlock()
+	err := UTXOdatabase.Close()
+	if err != nil {
+		return err
+	}
+	log.Println("UTXO database is down...")
+	return nil
 }
