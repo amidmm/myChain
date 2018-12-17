@@ -193,6 +193,14 @@ func (b *Blockchain) AddBlock(p *msg.Packet) error {
 	if err != nil {
 		return err
 	}
+	Transaction.OpenUTXO()
+	if err != nil {
+		return err
+	}
+	Transaction.PutUTXO(p.GetBlockData().Coinbase)
+	if err != nil {
+		return err
+	}
 	b.Tip = p
 	return nil
 }
