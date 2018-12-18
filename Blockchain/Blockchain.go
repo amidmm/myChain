@@ -28,10 +28,9 @@ import (
 )
 
 type Blockchain struct {
-	Tip       *msg.Packet
-	DB        *leveldb.DB
-	chainLock sync.Mutex
-	//tmp debug
+	Tip                 *msg.Packet
+	DB                  *leveldb.DB
+	chainLock           sync.Mutex
 	minRetargetTimespan int64  // target timespan / adjustment factor
 	maxRetargetTimespan int64  // target timespan * adjustment factor
 	blocksPerRetarget   uint64 // target timespan / target time per block
@@ -47,8 +46,6 @@ type chainParams struct {
 	MinDiffReductionTime     time.Duration
 	GenerateSupported        bool
 }
-
-//tmp debug
 
 func (b *Blockchain) InitBlockchain() {
 	params := chainParams{
@@ -182,27 +179,39 @@ func (b *Blockchain) AddBlock(p *msg.Packet) error {
 	defer b.chainLock.Unlock()
 	// TODO: change the expected target
 	db := b.DB
-	raw, _ := proto.Marshal(p)
-	err := db.Put(
-		bytes.Join([][]byte{
-			[]byte("b"), p.Hash}, []byte{}), raw, nil)
-	if err != nil {
-		return err
+	_, err := db.Get(p.Hash, nil)
+	if err == leveldb.ErrNotFound && p.CurrentBlockNumber > b.Tip.CurrentBlockNumber {
+		raw, _ := proto.Marshal(p)
+		err := db.Put(
+			bytes.Join([][]byte{
+				[]byte("b"), p.Hash}, []byte{}), raw, nil)
+		if err != nil {
+			return err
+		}
+		err = db.Put([]byte("l"), p.Hash, nil)
+		if err != nil {
+			return err
+		}
+		Transaction.OpenUTXO()
+		if err != nil {
+			return err
+		}
+		Transaction.PutUTXO(p.GetBlockData().Coinbase)
+		if err != nil {
+			return err
+		}
+		b.Tip = p
+		return nil
 	}
-	err = db.Put([]byte("l"), p.Hash, nil)
-	if err != nil {
-		return err
+	return Consts.ErrOldBlock
+}
+
+func (bc *Blockchain) CheckWithTip(p *msg.Packet) bool {
+	//TODO: make it base on the packetHashes, rep, sanity
+	if p.CurrentBlockNumber > bc.Tip.CurrentBlockNumber {
+		return true
 	}
-	Transaction.OpenUTXO()
-	if err != nil {
-		return err
-	}
-	Transaction.PutUTXO(p.GetBlockData().Coinbase)
-	if err != nil {
-		return err
-	}
-	b.Tip = p
-	return nil
+	return false
 }
 
 //Prev returns the prev block of the BlockchainIterator
