@@ -3,6 +3,7 @@ package PoW
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/hex"
 	"log"
 	"math/big"
@@ -21,9 +22,7 @@ type pow struct {
 }
 
 func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
-	sign := p.Sign
 	p.Nonce = nil
-	p.Sign = nil
 	p.Hash = nil
 	p.Diff = target
 	data, err := proto.Marshal(p)
@@ -35,7 +34,6 @@ func SetPoW(ctx context.Context, p *msg.Packet, target uint32) error {
 		return err
 	}
 	p.Nonce = nonce
-	p.Sign = sign
 	return nil
 }
 
@@ -52,7 +50,10 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 	one := big.NewInt(1)
 	done := make(chan bool, 1)
 	diff.Lsh(diff, uint(512-target))
-	log.Println("Mining \"" + hex.EncodeToString(sha3.New224().Sum(data)) + "\" with target " + strconv.Itoa(int(target)))
+	IdHash := sha1.New()
+	IdHash.Write(data)
+	hashForLog := hex.EncodeToString(IdHash.Sum(nil))
+	log.Println("Mining \"" + hex.EncodeToString(IdHash.Sum(nil)) + "\" with target " + strconv.Itoa(int(target)))
 	for {
 		raw := bytes.Join([][]byte{
 			data,
@@ -74,7 +75,7 @@ func calculatePoW(ctx context.Context, data []byte, target uint32) ([]byte, erro
 			continue
 		}
 	}
-	log.Println("Found nonce for " + hex.EncodeToString(sha3.New224().Sum(data)) + " :" + nonce.String())
+	log.Println("Found nonce for " + hashForLog + " :" + nonce.String())
 	return nonce.Bytes(), nil
 }
 
@@ -87,13 +88,10 @@ func ValidatePoW(data msg.Packet, target uint32) (bool, error) {
 		return false, Consts.ErrWrongTarget
 	}
 	nonce := data.Nonce
-	sign := data.Sign
 	prevHash := data.Hash
 	data.Nonce = nil
-	data.Sign = nil
 	data.Hash = nil
 	defer func() {
-		data.Sign = sign
 		data.Nonce = nonce
 		data.Hash = prevHash
 	}()
