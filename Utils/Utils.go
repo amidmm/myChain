@@ -3,6 +3,8 @@ package Utils
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"os"
 	"strings"
 
 	"github.com/amidmm/MyChain/Consts"
@@ -78,6 +80,8 @@ func UnMarshalSha3List(data []byte) ([][]byte, error) {
 	// 512 / 8 = 64 as we use sha3_512
 	if len(data)%64 != 0 {
 		return nil, Consts.ErrDataIntegrity
+	} else if len(data) == 0 {
+		return nil, errors.New("empty list")
 	}
 	var SHA3list [][]byte
 	for len(data) != 0 {
@@ -95,4 +99,12 @@ func HashTo512(bigInt []byte) []byte {
 	pad := []byte(strings.Repeat("\x00", padding))
 	return bytes.Join(
 		[][]byte{pad, bigInt}, []byte{})
+}
+
+func RemoveExistingDB() {
+	os.RemoveAll(Consts.BlockchainDB)
+	os.RemoveAll(Consts.TangleDB)
+	os.RemoveAll(Consts.TangleRelations)
+	os.RemoveAll(Consts.TangleUnApproved)
+	os.RemoveAll(Consts.UTXODB)
 }
