@@ -256,9 +256,11 @@ func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 	//TODO: must use age check and do MCMC
 	iter := t.UnApproved.NewIterator(nil, nil)
 	iter.Next()
-	v1 := iter.Key()
+	v1 := make([]byte, 64)
+	v2 := make([]byte, 64)
+	copy(v1, iter.Key())
 	iter.Next()
-	v2 := iter.Key()
+	copy(v2, iter.Key())
 	if sep {
 		iter.Next()
 		v3 := iter.Key()
@@ -268,4 +270,60 @@ func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 	iter.Release()
 	t.UnApproved.Delete(v1, nil)
 	return v1, v2, nil
+}
+
+//Prev returns the prev Tips of the TangleIterator
+func (ti *TangleIterator) Prev() bool {
+	var tmpTips []*msg.Packet
+	for _, v := range ti.Tips {
+		// it must have v1 if it's in DB
+		if v.GetBundleData().Verify1 == nil {
+			continue
+		}
+		t, _ := GetPacketFromTangle(v.GetBundleData().Verify1)
+		tmpTips = append(tmpTips, t)
+		t, _ = GetPacketFromTangle(v.GetBundleData().Verify2)
+		tmpTips = append(tmpTips, t)
+		if v.GetBundleData().Verify3 != nil {
+			t, _ = GetPacketFromTangle(v.GetBundleData().Verify3)
+			tmpTips = append(tmpTips, t)
+		}
+	}
+	if len(tmpTips) == 0 {
+		return false
+	}
+	ti.Tips = tmpTips
+	return true
+}
+
+// Value retrive the current value for iterator
+func (ti *TangleIterator) Value() ([]*msg.Packet, error) {
+	if ti.Err != nil {
+		return nil, ti.Err
+	}
+	return ti.Tips, nil
+}
+
+// ResetErr rests error value for iterator
+func (ti *TangleIterator) ResetErr() {
+	ti.Err = nil
+}
+
+// InitIter initalize the iterator for a blockchain
+func (ti *TangleIterator) InitIter(tip []*msg.Packet) error {
+	ti.Relations, ti.UnApproved, ti.DB, _ = OpenTangle()
+	ti.Tips = tip
+	return nil
+}
+
+func GetPacketFromTangle(hash []byte) (*msg.Packet, error) {
+	// Doesn't support multi Tangle
+	raw, err := DataBase.Get(bytes.Join([][]byte{
+		[]byte("b"), hash}, []byte{}), nil)
+	if err != nil {
+		return nil, err
+	}
+	value := &msg.Packet{}
+	proto.Unmarshal(raw, value)
+	return value, nil
 }
