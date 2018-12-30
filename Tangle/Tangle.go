@@ -63,7 +63,7 @@ func (t *Tangle) InitTangle() {
 }
 
 type TangleIterator struct {
-	Tip        msg.Packet
+	Tips       []*msg.Packet
 	Relations  *leveldb.DB
 	UnApproved *leveldb.DB
 	DB         *leveldb.DB
@@ -211,10 +211,18 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		return err
 	}
 	rawV1, err := t.Relations.Get(p.GetBundleData().Verify1, nil)
+	if err == leveldb.ErrNotFound {
+		err = nil
+		rawV1 = []byte{}
+	}
 	if err != nil {
 		return err
 	}
 	rawV2, err := t.Relations.Get(p.GetBundleData().Verify2, nil)
+	if err == leveldb.ErrNotFound {
+		err = nil
+		rawV1 = []byte{}
+	}
 	if err != nil {
 		return err
 	}
@@ -254,8 +262,10 @@ func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 	if sep {
 		iter.Next()
 		v3 := iter.Key()
+		t.UnApproved.Delete(v3, nil)
 		return v1, v2, v3
 	}
 	iter.Release()
+	t.UnApproved.Delete(v1, nil)
 	return v1, v2, nil
 }
