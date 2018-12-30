@@ -27,6 +27,7 @@ type Tangle struct {
 	Relations           *leveldb.DB
 	UnApproved          *leveldb.DB
 	DB                  *leveldb.DB
+	Blockchain          *Blockchain.Blockchain
 	tangleLock          sync.Mutex
 	minRetargetTimespan int64  // target timespan / adjustment factor
 	maxRetargetTimespan int64  // target timespan * adjustment factor
@@ -173,6 +174,7 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 		t.DB = db
 		t.Relations = re
 		t.UnApproved = un
+		t.Blockchain = bc
 		return t, nil
 	}
 	return nil, Consts.ErrTangleExists
@@ -311,7 +313,7 @@ func (ti *TangleIterator) ResetErr() {
 	ti.Err = nil
 }
 
-// InitIter initalize the iterator for a blockchain
+// InitIter initalize the iterator for a Tangle
 func (ti *TangleIterator) InitIter(tip []*msg.Packet) error {
 	ti.Relations, ti.UnApproved, ti.DB, _ = OpenTangle()
 	ti.Tips = tip
@@ -330,7 +332,7 @@ func GetPacketFromTangle(hash []byte) (*msg.Packet, error) {
 	return value, nil
 }
 
-//ExportToJSON exports Blockchain as JSON
+//ExportToJSON exports Tangle as JSON
 func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
 	if err != nil {
@@ -384,4 +386,25 @@ func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet) error {
 		return err
 	}
 	return nil
+}
+
+func (ti *Tangle) ReadBundle(hash []byte) (*msg.Packet, error) {
+	db := ti.DB
+	rawBlock, err := db.Get(bytes.Join(
+		[][]byte{[]byte("b"), hash}, []byte{}),
+		nil)
+	if err != nil {
+		return nil, err
+	}
+	block := &msg.Packet{}
+	err = proto.Unmarshal(rawBlock, block)
+	if err != nil {
+		return nil, err
+	}
+	switch block.Data.(type) {
+	case *msg.Packet_BundleData:
+		return block, nil
+	default:
+		panic(Consts.ErrNotABlock)
+	}
 }
