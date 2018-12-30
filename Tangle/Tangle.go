@@ -2,6 +2,7 @@ package Tangle
 
 import (
 	"bytes"
+	"os"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
+	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/syndtr/goleveldb/leveldb"
@@ -326,4 +328,60 @@ func GetPacketFromTangle(hash []byte) (*msg.Packet, error) {
 	value := &msg.Packet{}
 	proto.Unmarshal(raw, value)
 	return value, nil
+}
+
+//ExportToJSON exports Blockchain as JSON
+func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := bytes.NewBuffer([]byte{})
+	_, err = buf.WriteString("[")
+	if err != nil {
+		return err
+	}
+	m := jsonpb.Marshaler{}
+	iter := &TangleIterator{}
+	err = iter.InitIter(tips)
+	if err != nil {
+		return err
+	}
+	v, err := iter.Value()
+	if err != nil {
+		return err
+	}
+	for _, i := range v {
+		err = m.Marshal(buf, i)
+		if err != nil {
+			return err
+		}
+		buf.WriteString(",")
+	}
+	for iter.Prev() {
+		if err != nil {
+			return err
+		}
+		v, err := iter.Value()
+		if err != nil {
+			return err
+		}
+		for _, i := range v {
+			err = m.Marshal(buf, i)
+			if err != nil {
+				return err
+			}
+			buf.WriteString(",")
+		}
+	}
+	_, err = buf.WriteString("]")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
 }
