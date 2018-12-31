@@ -300,6 +300,33 @@ func (ti *TangleIterator) Prev() bool {
 	return true
 }
 
+//Next returns the next Tips of the TangleIterator
+func (ti *TangleIterator) Next() bool {
+	var tmpTips []*msg.Packet
+	for _, tip := range ti.Tips {
+		rawOut, err := ti.Relations.Get(tip.Hash, nil)
+		if err == leveldb.ErrNotFound {
+			continue
+		}
+		if err != nil {
+			return false
+		}
+		sha3Out, err := Utils.UnMarshalSha3List(rawOut)
+		if err != nil {
+			return false
+		}
+		for _, v := range sha3Out {
+			p, _ := GetPacketFromTangle(v)
+			tmpTips = append(tmpTips, p)
+		}
+	}
+	if len(tmpTips) == 0 {
+		return false
+	}
+	ti.Tips = tmpTips
+	return true
+}
+
 // Value retrive the current value for iterator
 func (ti *TangleIterator) Value() ([]*msg.Packet, error) {
 	if ti.Err != nil {
@@ -333,7 +360,7 @@ func GetPacketFromTangle(hash []byte) (*msg.Packet, error) {
 }
 
 //ExportToJSON exports Tangle as JSON
-func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet) error {
+func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet, reverse bool) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -361,7 +388,12 @@ func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet) error {
 		}
 		buf.WriteString(",")
 	}
-	for iter.Prev() {
+	var directionFunc func() bool
+	directionFunc = iter.Prev
+	if reverse == true {
+		directionFunc = iter.Next
+	}
+	for directionFunc() {
 		if err != nil {
 			return err
 		}
