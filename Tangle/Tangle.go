@@ -2,6 +2,7 @@ package Tangle
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"sync"
 	"time"
@@ -251,7 +252,9 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		}
 		t.Relations.Put(p.GetBundleData().Verify1, rawV3, nil)
 	}
-	t.UnApproved.Put(p.Hash, []byte{}, nil)
+	bufBlockNumber := make([]byte,8)
+	binary.PutUvarint(bufBlockNumber, p.CurrentBlockNumber)
+	t.UnApproved.Put(p.Hash, bufBlockNumber, nil)
 	return nil
 }
 
@@ -439,4 +442,23 @@ func (ti *Tangle) ReadBundle(hash []byte) (*msg.Packet, error) {
 	default:
 		panic(Consts.ErrNotABlock)
 	}
+}
+
+func (ti *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packet, error) {
+	if distance == 0 {
+		return nil, Consts.ErrWrongParam
+	}
+	tips := []*msg.Packet{}
+	tips = append(tips, p)
+	iter := &TangleIterator{}
+	iter.InitIter(tips)
+	exits := iter.Prev()
+	for exits && distance > 1 {
+		distance--
+		exits = iter.Prev()
+	}
+	if !exits && distance > 1 {
+		return nil, Consts.ErrWrongParam
+	}
+	return iter.Value()
 }
