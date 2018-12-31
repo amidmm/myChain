@@ -28,6 +28,7 @@ type Tangle struct {
 	Relations           *leveldb.DB
 	UnApproved          *leveldb.DB
 	DB                  *leveldb.DB
+	UsersTips           *leveldb.DB
 	Blockchain          *Blockchain.Blockchain
 	tangleLock          sync.Mutex
 	minRetargetTimespan int64  // target timespan / adjustment factor
@@ -66,66 +67,79 @@ func (t *Tangle) InitTangle() {
 	t.TangleParams = &params
 }
 
-type TangleIterator struct {
+type Iterator struct {
 	Tips       []*msg.Packet
 	Relations  *leveldb.DB
 	UnApproved *leveldb.DB
 	DB         *leveldb.DB
+	UsersTips  *leveldb.DB
 	Err        error
 }
 
 var Relations *leveldb.DB = nil
 var UnApproved *leveldb.DB = nil
 var DataBase *leveldb.DB = nil
+var UserTips *leveldb.DB = nil
 var genericLock sync.Mutex
 
 //OpenTangle opens Relations,UnApproved,DataBase
-func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
-	if Relations != nil && UnApproved != nil && DataBase != nil {
-		return Relations, UnApproved, DataBase, nil
-	} else if Relations == nil && UnApproved == nil && DataBase == nil {
+func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
+	if Relations != nil && UnApproved != nil && DataBase != nil && UserTips != nil {
+		return Relations, UnApproved, DataBase, UserTips, nil
+	} else if Relations == nil && UnApproved == nil && DataBase == nil && UserTips == nil {
 		genericLock.Lock()
 		defer genericLock.Unlock()
 		s, err := storage.OpenFile(Consts.TangleDB, false)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		defer s.Close()
 		db, err := leveldb.Open(s, nil)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		DataBase = db
 
 		r, err := storage.OpenFile(Consts.TangleRelations, false)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		defer r.Close()
 		re, err := leveldb.Open(r, nil)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		Relations = re
 
 		u, err := storage.OpenFile(Consts.TangleUnApproved, false)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		defer u.Close()
 		un, err := leveldb.Open(u, nil)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		UnApproved = un
-		return re, un, db, nil
+
+		uTips, err := storage.OpenFile(Consts.UserTips, false)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		defer u.Close()
+		userTips, err := leveldb.Open(uTips, nil)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		UserTips = userTips
+		return re, un, db, userTips, nil
 	} else {
-		return nil, nil, nil, Consts.ErrInconsistantTangleDB
+		return nil, nil, nil, nil, Consts.ErrInconsistantTangleDB
 	}
 }
 
 func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
-	re, un, db, err := OpenTangle()
+	re, un, db, users, err := OpenTangle()
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +189,7 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 		t.DB = db
 		t.Relations = re
 		t.UnApproved = un
+		t.UsersTips = users
 		t.Blockchain = bc
 		return t, nil
 	}
@@ -252,7 +267,8 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		}
 		t.Relations.Put(p.GetBundleData().Verify1, rawV3, nil)
 	}
-	bufBlockNumber := make([]byte,8)
+	t.UsersTips.Put(p.Addr,p.Hash,nil)
+	bufBlockNumber := make([]byte, 8)
 	binary.PutUvarint(bufBlockNumber, p.CurrentBlockNumber)
 	t.UnApproved.Put(p.Hash, bufBlockNumber, nil)
 	return nil
@@ -279,8 +295,8 @@ func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 	return v1, v2, nil
 }
 
-//Prev returns the prev Tips of the TangleIterator
-func (ti *TangleIterator) Prev() bool {
+//Prev returns the prev Tips of the Iterator
+func (ti *Iterator) Prev() bool {
 	var tmpTips []*msg.Packet
 	for _, v := range ti.Tips {
 		// it must have v1 if it's in DB
@@ -303,8 +319,8 @@ func (ti *TangleIterator) Prev() bool {
 	return true
 }
 
-//Next returns the next Tips of the TangleIterator
-func (ti *TangleIterator) Next() bool {
+//Next returns the next Tips of the Iterator
+func (ti *Iterator) Next() bool {
 	var tmpTips []*msg.Packet
 	for _, tip := range ti.Tips {
 		rawOut, err := ti.Relations.Get(tip.Hash, nil)
@@ -331,7 +347,7 @@ func (ti *TangleIterator) Next() bool {
 }
 
 // Value retrive the current value for iterator
-func (ti *TangleIterator) Value() ([]*msg.Packet, error) {
+func (ti *Iterator) Value() ([]*msg.Packet, error) {
 	if ti.Err != nil {
 		return nil, ti.Err
 	}
@@ -339,13 +355,13 @@ func (ti *TangleIterator) Value() ([]*msg.Packet, error) {
 }
 
 // ResetErr rests error value for iterator
-func (ti *TangleIterator) ResetErr() {
+func (ti *Iterator) ResetErr() {
 	ti.Err = nil
 }
 
 // InitIter initalize the iterator for a Tangle
-func (ti *TangleIterator) InitIter(tip []*msg.Packet) error {
-	ti.Relations, ti.UnApproved, ti.DB, _ = OpenTangle()
+func (ti *Iterator) InitIter(tip []*msg.Packet) error {
+	ti.Relations, ti.UnApproved, ti.DB, ti.UsersTips, _ = OpenTangle()
 	ti.Tips = tip
 	return nil
 }
@@ -375,7 +391,7 @@ func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet, reverse bool) er
 		return err
 	}
 	m := jsonpb.Marshaler{}
-	iter := &TangleIterator{}
+	iter := &Iterator{}
 	err = iter.InitIter(tips)
 	if err != nil {
 		return err
@@ -450,7 +466,7 @@ func (ti *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packe
 	}
 	tips := []*msg.Packet{}
 	tips = append(tips, p)
-	iter := &TangleIterator{}
+	iter := &Iterator{}
 	iter.InitIter(tips)
 	exits := iter.Prev()
 	for exits && distance > 1 {
