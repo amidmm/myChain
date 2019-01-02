@@ -30,6 +30,8 @@ type Tangle struct {
 	DB                  *leveldb.DB
 	UsersTips           *leveldb.DB
 	Blockchain          *Blockchain.Blockchain
+	InitialCounter      uint64
+	CurrentDiff         uint32
 	tangleLock          sync.Mutex
 	minRetargetTimespan int64  // target timespan / adjustment factor
 	maxRetargetTimespan int64  // target timespan * adjustment factor
@@ -40,7 +42,7 @@ type Tangle struct {
 type tanleParams struct {
 	TargetTimespan           time.Duration
 	TargetTimePerBlock       time.Duration
-	LastBlockToVerify        uint64
+	LastBlockToVerify        uint64 // last block which is acceptable
 	RetargetAdjustmentFactor int64
 	ReduceMinDifficulty      bool
 	MinDiffReductionTime     time.Duration
@@ -50,9 +52,9 @@ type tanleParams struct {
 
 func (t *Tangle) InitTangle() {
 	params := tanleParams{
-		LastBlockToVerify:        100,
+		LastBlockToVerify:        6,
 		TargetTimespan:           time.Hour * 24 * 14, // 14 days
-		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+		TargetTimePerBlock:       time.Second * 10,    // 10 Seconds
 		RetargetAdjustmentFactor: 2,                   // 25% less, 400% more
 		ReduceMinDifficulty:      false,
 		MinDiffReductionTime:     0,
@@ -61,10 +63,11 @@ func (t *Tangle) InitTangle() {
 	targetTimespan := int64(params.TargetTimespan / time.Second)         //TargetTimespan in seconds
 	targetTimePerBlock := int64(params.TargetTimePerBlock / time.Second) //TargetTimePerBlock in seconds
 	adjustmentFactor := params.RetargetAdjustmentFactor
-	t.blocksPerRetarget = uint64(targetTimespan / targetTimePerBlock) //2016
+	t.blocksPerRetarget = uint64(targetTimespan / targetTimePerBlock) //120960
 	t.minRetargetTimespan = targetTimespan / adjustmentFactor         // 1209600÷4= 302400
 	t.maxRetargetTimespan = targetTimespan * adjustmentFactor         // 1209600x4= 4838400
 	t.TangleParams = &params
+	t.CurrentDiff = Consts.TangleInitPoWLinit
 }
 
 type Iterator struct {
@@ -81,6 +84,8 @@ var UnApproved *leveldb.DB = nil
 var DataBase *leveldb.DB = nil
 var UserTips *leveldb.DB = nil
 var genericLock sync.Mutex
+var FirstInital msg.Packet
+var LastInital msg.Packet
 
 //OpenTangle opens Relations,UnApproved,DataBase
 func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
@@ -147,6 +152,7 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 	if err == leveldb.ErrNotFound {
 		t := &Tangle{}
 		genesis := GenesisBundle(bc)
+		FirstInital = *genesis
 		//TODO: use add block instead
 		raw, _ := proto.Marshal(genesis)
 		err = db.Put(
@@ -166,6 +172,7 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 		//Second Genesis
 		genesis = nil
 		genesis = GenesisBundle(bc)
+		LastInital = *genesis
 		//TODO: use add block instead
 		raw, _ = proto.Marshal(genesis)
 		err = db.Put(
@@ -230,7 +237,22 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	if err != nil {
 		return err
 	}
-	rawV1, err := t.Relations.Get(p.GetBundleData().Verify1, nil)
+	var data struct {
+		Verify1 []byte
+		Verify2 []byte
+		Verify3 []byte
+	}
+	switch p.Data.(type) {
+	case *msg.Packet_BundleData:
+		data.Verify1 = p.GetBundleData().Verify1
+		data.Verify2 = p.GetBundleData().Verify2
+		data.Verify2 = p.GetBundleData().Verify2
+	case *msg.Packet_InitialData:
+		data.Verify1 = p.GetInitialData().Verify1
+		data.Verify2 = p.GetInitialData().Verify2
+		data.Verify3 = nil
+	}
+	rawV1, err := t.Relations.Get(data.Verify1, nil)
 	if err == leveldb.ErrNotFound {
 		err = nil
 		rawV1 = []byte{}
@@ -238,7 +260,7 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	if err != nil {
 		return err
 	}
-	rawV2, err := t.Relations.Get(p.GetBundleData().Verify2, nil)
+	rawV2, err := t.Relations.Get(data.Verify2, nil)
 	if err == leveldb.ErrNotFound {
 		err = nil
 		rawV1 = []byte{}
@@ -250,13 +272,13 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	if err != nil {
 		return err
 	}
-	t.Relations.Put(p.GetBundleData().Verify1, rawV1, nil)
+	t.Relations.Put(data.Verify1, rawV1, nil)
 	rawV2, err = Utils.AppendMarshalSha3(rawV2, p.Hash)
 	if err != nil {
 		return err
 	}
-	t.Relations.Put(p.GetBundleData().Verify2, rawV1, nil)
-	if special {
+	t.Relations.Put(data.Verify2, rawV1, nil)
+	if special && p.PacketType == msg.Packet_BUNDLE {
 		rawV3, err := t.Relations.Get(p.GetBundleData().Verify3, nil)
 		if err != nil {
 			return err
@@ -267,10 +289,21 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		}
 		t.Relations.Put(p.GetBundleData().Verify1, rawV3, nil)
 	}
-	t.UsersTips.Put(p.Addr,p.Hash,nil)
+	t.UsersTips.Put(p.Addr, p.Hash, nil)
 	bufBlockNumber := make([]byte, 8)
 	binary.PutUvarint(bufBlockNumber, p.CurrentBlockNumber)
 	t.UnApproved.Put(p.Hash, bufBlockNumber, nil)
+	if p.PacketType == msg.Packet_INITIAL {
+		t.InitialCounter++
+		LastInital = *p
+		if t.InitialCounter >= t.blocksPerRetarget {
+			diff, err := t.CalcNextRequiredDifficulty()
+			if err != nil {
+				return err
+			}
+			t.CurrentDiff = diff
+		}
+	}
 	return nil
 }
 
@@ -379,7 +412,7 @@ func GetPacketFromTangle(hash []byte) (*msg.Packet, error) {
 }
 
 //ExportToJSON exports Tangle as JSON
-func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet, reverse bool) error {
+func (t *Tangle) ExportToJSON(path string, tips []*msg.Packet, reverse bool) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -439,8 +472,8 @@ func (ti *Tangle) ExportToJSON(path string, tips []*msg.Packet, reverse bool) er
 	return nil
 }
 
-func (ti *Tangle) ReadBundle(hash []byte) (*msg.Packet, error) {
-	db := ti.DB
+func (t *Tangle) ReadBundle(hash []byte) (*msg.Packet, error) {
+	db := t.DB
 	rawBlock, err := db.Get(bytes.Join(
 		[][]byte{[]byte("b"), hash}, []byte{}),
 		nil)
@@ -460,7 +493,7 @@ func (ti *Tangle) ReadBundle(hash []byte) (*msg.Packet, error) {
 	}
 }
 
-func (ti *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packet, error) {
+func (t *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packet, error) {
 	if distance == 0 {
 		return nil, Consts.ErrWrongParam
 	}
@@ -477,4 +510,30 @@ func (ti *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packe
 		return nil, Consts.ErrWrongParam
 	}
 	return iter.Value()
+}
+
+func (t *Tangle) CalcNextRequiredDifficulty() (uint32, error) {
+	if (t.InitialCounter+1)%t.NextRetarget() != 0 {
+		return t.CurrentDiff, nil
+	}
+	firstNode := FirstInital
+	actualTimespan := LastInital.Timestamp.Seconds - firstNode.Timestamp.Seconds
+	adjustedTimespan := actualTimespan
+	if actualTimespan < t.minRetargetTimespan {
+		adjustedTimespan = t.minRetargetTimespan
+	} else if actualTimespan > t.maxRetargetTimespan {
+		adjustedTimespan = t.maxRetargetTimespan
+	}
+	targetTimeSpan := int64(t.TangleParams.TargetTimespan / time.Second)
+	diff := int64(LastInital.Diff) * (targetTimeSpan / adjustedTimespan)
+	if uint32(diff) < Consts.TangleInitPoWLinit {
+		return Consts.TangleInitPoWLinit, nil
+	}
+	FirstInital = LastInital
+	return uint32(diff), nil
+}
+
+func (t *Tangle) NextRetarget() uint64 {
+	retarget := t.blocksPerRetarget - (t.InitialCounter % t.blocksPerRetarget)
+	return retarget + t.InitialCounter
 }
