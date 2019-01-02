@@ -86,7 +86,6 @@ func OpenBlockChain() (*leveldb.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer s.Close()
 	db, err := leveldb.Open(s, nil)
 	if err != nil {
 		return nil, err

@@ -99,7 +99,6 @@ func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		defer s.Close()
 		db, err := leveldb.Open(s, nil)
 		if err != nil {
 			return nil, nil, nil, nil, err
@@ -110,7 +109,6 @@ func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		defer r.Close()
 		re, err := leveldb.Open(r, nil)
 		if err != nil {
 			return nil, nil, nil, nil, err
@@ -121,7 +119,6 @@ func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		defer u.Close()
 		un, err := leveldb.Open(u, nil)
 		if err != nil {
 			return nil, nil, nil, nil, err
@@ -132,7 +129,6 @@ func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		defer u.Close()
 		userTips, err := leveldb.Open(uTips, nil)
 		if err != nil {
 			return nil, nil, nil, nil, err
