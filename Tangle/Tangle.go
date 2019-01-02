@@ -3,6 +3,7 @@ package Tangle
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -510,6 +511,26 @@ func (t *Tangle) RelativeAncestor(p *msg.Packet, distance uint64) ([]*msg.Packet
 		return nil, Consts.ErrWrongParam
 	}
 	return iter.Value()
+}
+
+func (t *Tangle) Close() error {
+	if (t.DB == nil || DataBase == nil) &&
+		(t.Relations == nil || Relations == nil) && (t.UnApproved == nil || UnApproved == nil) &&
+		(t.UsersTips == nil || UserTips == nil) {
+		return leveldb.ErrClosed
+	}
+	t.tangleLock.Lock()
+	defer t.tangleLock.Unlock()
+	DataBase = nil
+	Relations = nil
+	UnApproved = nil
+	UserTips = nil
+	t.DB.Close()
+	t.Relations.Close()
+	t.UnApproved.Close()
+	t.UsersTips.Close()
+	log.Println("Tangle databases is down...")
+	return nil
 }
 
 func (t *Tangle) CalcNextRequiredDifficulty() (uint32, error) {
