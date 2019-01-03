@@ -37,6 +37,8 @@ type Tangle struct {
 	minRetargetTimespan int64  // target timespan / adjustment factor
 	maxRetargetTimespan int64  // target timespan * adjustment factor
 	blocksPerRetarget   uint64 // target timespan / target time per block
+	VblocksPerRetarget  uint64 // same as blocksPerRetarget but for virtual blockchains
+	VbcDiffChangeRate   uint64 // Rate of change in diff of virtual blockchain
 	TangleParams        *tanleParams
 }
 
@@ -67,8 +69,10 @@ func (t *Tangle) InitTangle() {
 	t.blocksPerRetarget = uint64(targetTimespan / targetTimePerBlock) //120960
 	t.minRetargetTimespan = targetTimespan / adjustmentFactor         // 1209600÷4= 302400
 	t.maxRetargetTimespan = targetTimespan * adjustmentFactor         // 1209600x4= 4838400
+	t.VblocksPerRetarget = 100
+	t.VbcDiffChangeRate = 2
 	t.TangleParams = &params
-	t.CurrentDiff = Consts.TangleInitPoWLinit
+	t.CurrentDiff = Consts.TangleInitPoWLimit
 }
 
 type Iterator struct {
@@ -287,6 +291,22 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		t.Relations.Put(p.GetBundleData().Verify1, rawV3, nil)
 	}
 	t.UsersTips.Put(p.Addr, p.Hash, nil)
+	rawCounter, err := t.UsersTips.Get(bytes.Join([][]byte{
+		[]byte("c"), p.Addr}, []byte{}), nil)
+	if err == leveldb.ErrNotFound {
+		t.UsersTips.Put(bytes.Join([][]byte{
+			[]byte("c"), p.Addr}, []byte{}), t.InitialPacketCounter(p), nil)
+	} else {
+		counter := Utils.UnMarshalPacketCounter(rawCounter)
+		counter[p.CurrentBlockNumber]++
+		rawCounter, err = Utils.MarshalPacketCounter(counter, t.TangleParams.LastBlockToVerify)
+		if err != nil {
+			return err
+		}
+		t.UsersTips.Put(bytes.Join([][]byte{
+			[]byte("c"), p.Addr}, []byte{}), rawCounter, nil)
+	}
+
 	bufBlockNumber := make([]byte, 8)
 	binary.PutUvarint(bufBlockNumber, p.CurrentBlockNumber)
 	t.UnApproved.Put(p.Hash, bufBlockNumber, nil)
@@ -543,8 +563,8 @@ func (t *Tangle) CalcNextRequiredDifficulty() (uint32, error) {
 	}
 	targetTimeSpan := int64(t.TangleParams.TargetTimespan / time.Second)
 	diff := int64(LastInital.Diff) * (targetTimeSpan / adjustedTimespan)
-	if uint32(diff) < Consts.TangleInitPoWLinit {
-		return Consts.TangleInitPoWLinit, nil
+	if uint32(diff) < Consts.TangleInitPoWLimit {
+		return Consts.TangleInitPoWLimit, nil
 	}
 	FirstInital = LastInital
 	return uint32(diff), nil
@@ -553,4 +573,49 @@ func (t *Tangle) CalcNextRequiredDifficulty() (uint32, error) {
 func (t *Tangle) NextRetarget() uint64 {
 	retarget := t.blocksPerRetarget - (t.InitialCounter % t.blocksPerRetarget)
 	return retarget + t.InitialCounter
+}
+
+func (t *Tangle) InitialPacketCounter(p *msg.Packet) []byte {
+	data := make(map[uint64]uint64)
+	data[p.CurrentBlockNumber]++
+	raw, err := Utils.MarshalPacketCounter(data, t.TangleParams.LastBlockToVerify)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+func (t *Tangle) NextVbcRetarget(addr []byte) uint64 {
+	// TODO: more sophisticated method should be used
+	sum, _ := t.CurrentVbcCounter(addr)
+	retarget := t.VblocksPerRetarget - (sum % t.VblocksPerRetarget)
+	return retarget + sum
+}
+
+// CurrentVbcCounter reads current number for virtual blockchain
+func (t *Tangle) CurrentVbcCounter(addr []byte) (uint64, error) {
+	rawCounter, err := t.UsersTips.Get(bytes.Join([][]byte{
+		[]byte("c"), addr}, []byte{}), nil)
+	if err == leveldb.ErrNotFound {
+		return 0, Consts.ErrDataIntegrity
+	}
+	sum := uint64(0)
+	counter := Utils.UnMarshalPacketCounter(rawCounter)
+	for _, v := range counter {
+		sum += v
+	}
+	return sum, nil
+}
+
+func (t *Tangle) CalcNextVbcDiff(addr []byte) (uint32, error) {
+	c, err := t.CurrentVbcCounter(addr)
+	if err != nil {
+		return 0, err
+	}
+	diff := c / t.VblocksPerRetarget
+	diff *= t.VbcDiffChangeRate
+	if uint32(diff) < Consts.VbcPoWLimit {
+		return Consts.VbcPoWLimit, nil
+	}
+	return uint32(diff), nil
 }
