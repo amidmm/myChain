@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/amidmm/MyChain/Consts"
@@ -107,4 +109,51 @@ func RemoveExistingDB() {
 	os.RemoveAll(Consts.TangleRelations)
 	os.RemoveAll(Consts.TangleUnApproved)
 	os.RemoveAll(Consts.UTXODB)
+	os.RemoveAll(Consts.UserTips)
+}
+
+// MarshalPacketCounter marshals the counters for virtual blockchains inn tangle
+func MarshalPacketCounter(data map[uint64]uint64, lastBlockToVerify uint64) ([]byte, error) {
+	CheckLengthPacketCounter(data, lastBlockToVerify)
+	var buf bytes.Buffer
+	for i, v := range data {
+		keyByte := make([]byte, 8)
+		valueByte := make([]byte, 8)
+		binary.PutUvarint(keyByte, i)
+		binary.PutUvarint(valueByte, v)
+		_, err := buf.Write(keyByte)
+		if err != nil {
+			return nil, err
+		}
+		_, err = buf.Write(valueByte)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+func CheckLengthPacketCounter(data map[uint64]uint64, lastBlockToVerify uint64) {
+	if len(data) <= int(lastBlockToVerify) {
+		return
+	}
+	keys := reflect.ValueOf(data).MapKeys()
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].Uint() < keys[j].Uint()
+	})
+	for i := 0; i <= len(data)-int(lastBlockToVerify); i++ {
+		delete(data, keys[i].Uint())
+	}
+}
+
+func UnMarshalPacketCounter(raw []byte) map[uint64]uint64 {
+	counter := 8
+	data := make(map[uint64]uint64)
+	for len(raw) != 0 {
+		key, _ := binary.Uvarint(raw)
+		value, _ := binary.Uvarint(raw[counter:])
+		data[key] = value
+		raw = raw[2*counter:]
+	}
+	return data
 }
