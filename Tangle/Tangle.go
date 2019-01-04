@@ -619,3 +619,14 @@ func (t *Tangle) CalcNextVbcDiff(addr []byte) (uint32, error) {
 	}
 	return uint32(diff), nil
 }
+
+func (t *Tangle) HasSeenInTangle(p *msg.Packet) bool {
+	db := t.DB
+	_, err := db.Get(bytes.Join(
+		[][]byte{[]byte("b"), p.Hash}, []byte{}),
+		nil)
+	if err == nil {
+		return true
+	}
+	return false
+}

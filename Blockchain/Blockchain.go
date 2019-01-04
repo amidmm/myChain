@@ -470,3 +470,11 @@ func (b *Blockchain) Close() error {
 	b.chainLock.Unlock()
 	return nil
 }
+
+func (bc *Blockchain) HasBlockSeen(block *msg.Packet) bool {
+	_, err := bc.ReadBlock(block.Hash)
+	if err == nil {
+		return true
+	}
+	return false
+}
