@@ -92,7 +92,7 @@ func ValidateSign(p *msg.Packet) (bool, error) {
 	return true, nil
 }
 
-func JSON(p *msg.Packet) string {
+func ToJSON(p *msg.Packet) string {
 	json := jsonpb.Marshaler{}
 	s, _ := json.MarshalToString(p)
 	return s
