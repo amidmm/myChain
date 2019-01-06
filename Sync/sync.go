@@ -47,11 +47,11 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 			}
 			ok, err := CheckOrdered(p, bc, t)
 			if err != nil {
-				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 			}
 			if !ok {
 				if _, err = t.UsersTips.Get(p.Addr, nil); p.PacketType != msg.Packet_INITIAL && p.PacketType != msg.Packet_BLOCK && err != nil {
-					log.Println("\033[31m Sync: DOS protection:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+					log.Println("\033[31m Sync: DOS protection:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 				}
 				raw, _ := proto.Marshal(p)
 				UnsyncPoolDB.Put(p.Prev, raw, nil)
@@ -61,7 +61,7 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 			unsyncHash, err := UnsyncPoolDB.Get(p.Hash, nil)
 			if err == leveldb.ErrNotFound {
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
@@ -72,13 +72,13 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				unsyncSha1 := sha1.New()
 				unsyncSha1.Write(unsyncHash)
 				if ok, err := ProcessPacket(unsyncPacket, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + err.Error() + "\033[0m")
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 					UnsyncPoolDB.Delete(unsyncPacket.Hash, nil)
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\033[0m")
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
