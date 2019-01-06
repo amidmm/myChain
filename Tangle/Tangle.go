@@ -597,7 +597,7 @@ func (t *Tangle) CurrentVbcCounter(addr []byte) (uint64, error) {
 	rawCounter, err := t.UsersTips.Get(bytes.Join([][]byte{
 		[]byte("c"), addr}, []byte{}), nil)
 	if err == leveldb.ErrNotFound {
-		return 0, Consts.ErrDataIntegrity
+		return 1, nil
 	}
 	sum := uint64(0)
 	counter := Utils.UnMarshalPacketCounter(rawCounter)
@@ -605,6 +605,20 @@ func (t *Tangle) CurrentVbcCounter(addr []byte) (uint64, error) {
 		sum += v
 	}
 	return sum, nil
+}
+
+func (t *Tangle) CalcNextVbcDiffProducer(addr []byte) (uint32, error) {
+	c, err := t.CurrentVbcCounter(addr)
+	if err != nil {
+		return 0, err
+	}
+	c++
+	diff := c / t.VblocksPerRetarget
+	diff *= t.VbcDiffChangeRate
+	if uint32(diff) < Consts.VbcPoWLimit {
+		return Consts.VbcPoWLimit, nil
+	}
+	return uint32(diff), nil
 }
 
 func (t *Tangle) CalcNextVbcDiff(addr []byte) (uint32, error) {
