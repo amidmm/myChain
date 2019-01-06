@@ -50,6 +50,9 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
 			}
 			if !ok {
+				if _, err = t.UsersTips.Get(p.Addr, nil); p.PacketType != msg.Packet_INITIAL && p.PacketType != msg.Packet_BLOCK && err != nil {
+					log.Println("\033[31m Sync: DOS protection:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+				}
 				raw, _ := proto.Marshal(p)
 				UnsyncPoolDB.Put(p.Prev, raw, nil)
 				log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
