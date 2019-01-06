@@ -644,3 +644,45 @@ func (t *Tangle) HasSeenInTangle(p *msg.Packet) bool {
 	}
 	return false
 }
+
+func (t *Tangle) ExportVBCToJSON(path string, addr []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := bytes.NewBuffer([]byte{})
+	_, err = buf.WriteString("[")
+	if err != nil {
+		return err
+	}
+	m := jsonpb.Marshaler{}
+	raw, err := t.UsersTips.Get(addr, nil)
+	if err != nil {
+		return err
+	}
+	p := &msg.Packet{}
+	proto.Unmarshal(raw, p)
+	m.Marshal(buf, p)
+	for p.Prev == nil {
+		_, err = buf.WriteString(",")
+		if err != nil {
+			return err
+		}
+		raw, err = t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.Prev}, []byte{}),
+			nil)
+		p = &msg.Packet{}
+		err = proto.Unmarshal(raw, p)
+		m.Marshal(buf, p)
+	}
+	buf.WriteString("]")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	return nil
+}
