@@ -1,7 +1,14 @@
 package Sync
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"log"
 	"time"
+
+	"github.com/golang/protobuf/proto"
 
 	"github.com/amidmm/MyChain/Packet"
 
@@ -25,6 +32,58 @@ func init() {
 	UnsyncPoolDB, err = leveldb.Open(s, nil)
 	if err != nil {
 		return
+	}
+}
+
+func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) {
+	for {
+		select {
+		case p := <-packetChan:
+			hash := sha1.New()
+			hash.Write(p.Hash)
+			if ok, err := IncomingPacketValidation(p, bc, t); err != nil || !ok {
+				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+				continue
+			}
+			ok, err := CheckOrdered(p, bc, t)
+			if err != nil {
+				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+			}
+			if !ok {
+				raw, _ := proto.Marshal(p)
+				UnsyncPoolDB.Put(p.Prev, raw, nil)
+				log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+				continue
+			}
+			unsyncHash, err := UnsyncPoolDB.Get(p.Hash, nil)
+			if err == leveldb.ErrNotFound {
+				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+					continue
+				}
+				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+			} else {
+				unsyncPacket := &msg.Packet{}
+				unsyncRaw, _ := UnsyncPoolDB.Get(unsyncHash, nil)
+				proto.Unmarshal(unsyncRaw, unsyncPacket)
+				unsyncSha1 := sha1.New()
+				unsyncSha1.Write(unsyncHash)
+				if ok, err := ProcessPacket(unsyncPacket, bc, t); err != nil || !ok {
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + err.Error() + "\033[0m")
+					UnsyncPoolDB.Delete(unsyncPacket.Hash, nil)
+					continue
+				}
+				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\033[0m")
+				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + err.Error() + "\033[0m")
+					continue
+				}
+				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+			}
+		case <-ctx.Done():
+			log.Println("\033[41m Sync: exiting \033[0m")
+			return
+		}
 	}
 }
 
@@ -98,4 +157,25 @@ func IncomingPacketValidation(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangl
 		return false, err
 	}
 	return true, nil
+}
+
+func CheckOrdered(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool, error) {
+	var err error
+	joined := bytes.Join([][]byte{
+		[]byte("b"), p.Prev}, []byte{})
+	if p.PacketType == msg.Packet_BLOCK {
+		_, err = bc.DB.Get(joined, nil)
+	} else if p.PacketType != msg.Packet_INITIAL {
+		_, err = t.DB.Get(joined, nil)
+	}
+	if err == leveldb.ErrNotFound {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func ProcessPacket(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool, error) {
+	return false, Consts.ErrNotImplemented
 }
