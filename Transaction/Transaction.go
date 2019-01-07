@@ -22,6 +22,13 @@ import (
 var UTXOlock sync.Mutex
 var UTXOdatabase *leveldb.DB
 
+func init() {
+	err := OpenUTXO()
+	if err != nil {
+		log.Println("\033[31m TX: unable to open UTXO database " + err.Error() + "\033[0m")
+	}
+}
+
 func OpenUTXO() error {
 	//needed to change if multiple blockchain allowed
 	UTXOlock.Lock()
@@ -86,6 +93,8 @@ func SetTxSign(t *msg.Tx, u *Account.User) error {
 }
 
 func ValidateTxSign(t *msg.Tx) (bool, error) {
+	//TODO: make it base on address
+	//		"public key is not embedded in peer ID" error while using addr
 	sign := t.Sign
 	BundleHash := t.BundleHash
 	t.Sign = nil
