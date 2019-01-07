@@ -176,3 +176,32 @@ func CloseUTXO() error {
 	log.Println("UTXO database is down...")
 	return nil
 }
+
+func HandleBundle(p *msg.Packet) (bool, error) {
+	last := 0
+	defer func() {
+		if p.GetBundleData().Transactions[last] != p.GetBundleData().Transactions[len(p.GetBundleData().Transactions)-1] {
+			for ; last >= 0; last-- {
+				if p.GetBundleData().Transactions[last].Value > 0 {
+					UnUTXOWithHash(p.GetBundleData().Transactions[last].Hash)
+				} else if p.GetBundleData().Transactions[last].Value < 0 {
+					PutUTXO(p.GetBundleData().Transactions[last])
+				}
+			}
+		}
+	}()
+	data := p.GetBundleData().Transactions
+	for i, v := range data {
+		if v.Value > 0 {
+			if err := PutUTXO(v); err != nil {
+				return false, err
+			}
+		} else if v.Value < 0 {
+			if err := UnUTXOWithHash(v.Hash); err != nil {
+				return false, err
+			}
+		}
+		last = i
+	}
+	return true, nil
+}
