@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Transaction"
 	"github.com/amidmm/MyChain/Utils"
 
 	"github.com/amidmm/MyChain/Packet"
@@ -319,6 +320,11 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 				return err
 			}
 			t.CurrentDiff = diff
+		}
+	}
+	if p.PacketType == msg.Packet_BUNDLE {
+		if ok, err := Transaction.HandleBundle(p); err != nil || !ok {
+			return err
 		}
 	}
 	return nil
