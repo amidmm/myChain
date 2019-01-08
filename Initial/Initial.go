@@ -2,6 +2,7 @@ package Initial
 
 import (
 	"bytes"
+	"errors"
 
 	"github.com/amidmm/MyChain/Account"
 
@@ -21,6 +22,11 @@ func ValidateInitial(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if ok, err := Bundle.ValidateBundle(p.GetInitialData().PoBurn, false); err != nil || !ok {
 			return false, err
 		}
+		for _, v := range p.GetInitialData().PoBurn.Transactions {
+			if v.Value >= 0 {
+				return false, errors.New("non-negative tx for Proof-of-burn")
+			}
+		}
 	}
 	if p.GetInitialData().OwnerAddr != nil {
 		u, _ := crypto.UnmarshalPublicKey(p.Addr)
@@ -39,8 +45,7 @@ func ValidateInitial(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 	return true, nil
 }
 
-// Should add PoBurn later
-func NewInitial(ServiceName string, nonce []byte, UserOwnerAddr *Account.User, currentUser *Account.User, CurrentBlockHash []byte, ipfsAddr multiaddr.Multiaddr, verify1 []byte, verify2 []byte) (*msg.Initial, error) {
+func NewInitial(ServiceName string, nonce []byte, bun *msg.Bundle, UserOwnerAddr *Account.User, currentUser *Account.User, CurrentBlockHash []byte, ipfsAddr multiaddr.Multiaddr, verify1 []byte, verify2 []byte) (*msg.Initial, error) {
 	inital := &msg.Initial{}
 	var err error
 	currentUserByte, _ := currentUser.PubKey.Bytes()
@@ -61,6 +66,14 @@ func NewInitial(ServiceName string, nonce []byte, UserOwnerAddr *Account.User, c
 	}
 	if ipfsAddr != nil {
 		inital.IpfsDetail = ipfsAddr.Bytes()
+	}
+	if bun != nil {
+		for _, v := range bun.Transactions {
+			if v.Value >= 0 {
+				return nil, errors.New("non-negative tx for Proof-of-burn")
+			}
+		}
+		inital.PoBurn = bun
 	}
 	inital.Verify1 = verify1
 	inital.Verify2 = verify2
