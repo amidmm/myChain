@@ -248,10 +248,22 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	case *msg.Packet_BundleData:
 		data.Verify1 = p.GetBundleData().Verify1
 		data.Verify2 = p.GetBundleData().Verify2
-		data.Verify2 = p.GetBundleData().Verify2
+		data.Verify2 = p.GetBundleData().Verify3
 	case *msg.Packet_InitialData:
 		data.Verify1 = p.GetInitialData().Verify1
 		data.Verify2 = p.GetInitialData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_RepData:
+		data.Verify1 = p.GetRepData().Verify1
+		data.Verify2 = p.GetRepData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_WeakData:
+		data.Verify1 = p.GetWeakData().Verify1
+		data.Verify2 = p.GetWeakData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_SanityData:
+		data.Verify1 = p.GetSanityData().Verify1
+		data.Verify2 = p.GetSanityData().Verify2
 		data.Verify3 = nil
 	}
 	rawV1, err := t.Relations.Get(data.Verify1, nil)
@@ -693,6 +705,47 @@ func (t *Tangle) ExportVBCToJSON(path string, addr []byte) error {
 	return nil
 }
 
-func (t *Tangle) ValidateVerify(bun *msg.Packet) (bool, error) {
-	return true, Consts.ErrNotImplemented
+func (t *Tangle) ValidateVerify(p *msg.Packet, sep bool) (bool, error) {
+	var data struct {
+		Verify1 []byte
+		Verify2 []byte
+		Verify3 []byte
+	}
+	switch p.Data.(type) {
+	case *msg.Packet_BundleData:
+		data.Verify1 = p.GetBundleData().Verify1
+		data.Verify2 = p.GetBundleData().Verify2
+		data.Verify2 = p.GetBundleData().Verify3
+	case *msg.Packet_InitialData:
+		data.Verify1 = p.GetInitialData().Verify1
+		data.Verify2 = p.GetInitialData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_RepData:
+		data.Verify1 = p.GetRepData().Verify1
+		data.Verify2 = p.GetRepData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_WeakData:
+		data.Verify1 = p.GetWeakData().Verify1
+		data.Verify2 = p.GetWeakData().Verify2
+		data.Verify3 = nil
+	case *msg.Packet_SanityData:
+		data.Verify1 = p.GetSanityData().Verify1
+		data.Verify2 = p.GetSanityData().Verify2
+		data.Verify3 = nil
+	}
+	if data.Verify1 == nil || data.Verify2 == nil {
+		return false, nil
+	}
+	if _, err := t.UnApproved.Get(data.Verify1, nil); err != nil {
+		return false, err
+	}
+	if _, err := t.UnApproved.Get(data.Verify2, nil); err != nil {
+		return false, err
+	}
+	if sep {
+		if _, err := t.UnApproved.Get(data.Verify3, nil); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
