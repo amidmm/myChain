@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	"github.com/amidmm/MyChain/Packet"
+	"github.com/amidmm/MyChain/Validator"
 
 	"github.com/amidmm/MyChain/PoW"
 
@@ -42,7 +43,11 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 			hash := sha1.New()
 			hash.Write(p.Hash)
 			if ok, err := IncomingPacketValidation(p, bc, t); err != nil || !ok {
-				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+				errStr := ""
+				if err != nil {
+					errStr = err.Error()
+				}
+				log.Println("\033[31m Sync: Invalid packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 				continue
 			}
 			ok, err := CheckOrdered(p, bc, t)
@@ -54,31 +59,42 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 					log.Println("\033[31m Sync: DOS protection:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 				}
 				raw, _ := proto.Marshal(p)
-				UnsyncPoolDB.Put(p.Prev, raw, nil)
+				err = UnsyncPoolDB.Put(p.Prev, raw, nil)
 				log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 				continue
 			}
-			unsyncHash, err := UnsyncPoolDB.Get(p.Hash, nil)
+			unsyncRaw, err := UnsyncPoolDB.Get(p.Hash, nil)
 			if err == leveldb.ErrNotFound {
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
+					errStr := ""
+					if err != nil {
+						errStr = err.Error()
+					}
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 			} else {
 				unsyncPacket := &msg.Packet{}
-				unsyncRaw, _ := UnsyncPoolDB.Get(unsyncHash, nil)
 				proto.Unmarshal(unsyncRaw, unsyncPacket)
 				unsyncSha1 := sha1.New()
-				unsyncSha1.Write(unsyncHash)
+				unsyncSha1.Write(unsyncPacket.Hash)
 				if ok, err := ProcessPacket(unsyncPacket, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\t" + err.Error() + "\033[0m")
+					errStr := ""
+					if err != nil {
+						errStr = err.Error()
+					}
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\t" + errStr + "\033[0m")
 					UnsyncPoolDB.Delete(unsyncPacket.Hash, nil)
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\033[0m")
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
+					errStr := ""
+					if err != nil {
+						errStr = err.Error()
+					}
+					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
@@ -180,5 +196,6 @@ func CheckOrdered(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (b
 }
 
 func ProcessPacket(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool, error) {
-	return false, Consts.ErrNotImplemented
+	return Validator.Validate(p, bc, t)
+	//return false, Consts.ErrNotImplemented
 }
