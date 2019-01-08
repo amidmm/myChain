@@ -692,3 +692,7 @@ func (t *Tangle) ExportVBCToJSON(path string, addr []byte) error {
 	}
 	return nil
 }
+
+func (t *Tangle) ValidateVerify(bun *msg.Packet) (bool, error) {
+	return true, Consts.ErrNotImplemented
+}
