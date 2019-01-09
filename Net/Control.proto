@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package Net;
+import "google/protobuf/timestamp.proto";
+
+message packet{
+    enum type{
+        Ping=0;
+        Pong=1;
+        FindNeighbourReq=2;
+        Neighbour=3;
+    }
+    type                        packet_type=1;
+    google.protobuf.Timestamp   timestamp=2;
+    bytes                       version=3;
+    oneof data{
+        ping                ping_data=4;
+        pong                pong_data=5;
+        find_neighbour_req  find_neighbour_req_data=6;
+        neighbour           neighbour=7;
+    }
+}
+
+message ping{}
+message pong{}
+message find_neighbour_req{}
+message neighbour{}
