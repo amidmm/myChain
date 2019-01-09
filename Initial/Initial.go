@@ -22,10 +22,8 @@ func ValidateInitial(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if ok, err := Bundle.ValidateBundle(p.GetInitialData().PoBurn, false); err != nil || !ok {
 			return false, err
 		}
-		for _, v := range p.GetInitialData().PoBurn.Transactions {
-			if v.Value >= 0 {
-				return false, errors.New("non-negative tx for Proof-of-burn")
-			}
+		if ok := Bundle.HasBurn(p.GetInitialData().PoBurn); !ok {
+			return false, errors.New("non-negative tx for Proof-of-burn")
 		}
 	}
 	if p.GetInitialData().OwnerAddr != nil {
@@ -68,10 +66,8 @@ func NewInitial(ServiceName string, nonce []byte, bun *msg.Bundle, UserOwnerAddr
 		inital.IpfsDetail = ipfsAddr.Bytes()
 	}
 	if bun != nil {
-		for _, v := range bun.Transactions {
-			if v.Value >= 0 {
-				return nil, errors.New("non-negative tx for Proof-of-burn")
-			}
+		if ok := Bundle.HasBurn(bun); !ok {
+			return nil, errors.New("non-negative tx for Proof-of-burn")
 		}
 		inital.PoBurn = bun
 	}

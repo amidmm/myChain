@@ -3,9 +3,7 @@ package Bundle
 import (
 	"bytes"
 
-	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
-	"github.com/amidmm/MyChain/Synchronizer"
 	"github.com/amidmm/MyChain/Transaction"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/sha3"
@@ -20,6 +18,7 @@ func ValidateBundle(bun *msg.Bundle, inBlock bool) (bool, error) {
 		if bytes.Compare(bun.Hash, GetBundleHash(*bun)) != 0 || bun.Transactions != nil {
 			return false, nil
 		}
+		return true, nil
 	}
 	if !bytes.Equal(bun.Hash, GetBundleHash(*bun)) {
 		return false, nil
@@ -36,9 +35,6 @@ func ValidateBundle(bun *msg.Bundle, inBlock bool) (bool, error) {
 	}
 	if bun.BundleType == msg.Bundle_WEAK {
 		return true, nil
-	}
-	if v, _ := ValidateVerify(bun); !v {
-		return false, nil
 	}
 	return true, nil
 }
@@ -57,26 +53,15 @@ func GetBundleHash(bun msg.Bundle) []byte {
 	return hash.Sum(nil)
 }
 
-func ValidateVerify(bun *msg.Bundle) (bool, error) {
-	return true, Consts.ErrNotImplemented
-}
-
-func IncomeBundle(bun *msg.Bundle) (bool, error) {
-	if v, err := Synchronizer.HasBundleSeen(bun); err != nil || v {
-		return false, err
+func HasBurn(bun *msg.Bundle) bool {
+	if bun.Transactions == nil {
+		return false
 	}
-	if v, err := ValidateBundle(bun, false); err != nil || !v {
-		return false, err
-	}
-	for _, tx := range bun.Transactions {
-		if tx.Value > 0 {
-			Transaction.PutUTXO(tx)
-		} else if tx.Value < 0 {
-			Transaction.UnUTXOWithHash(tx.RefTx)
+	ok := false
+	for _, v := range bun.Transactions {
+		if v.Value > 0 && v.Sign == nil {
+			ok = true
 		}
 	}
-	// if v, err := ValidateVerify(bun); err != nil || !v {
-	// 	return false, err
-	// }
-	return true, nil
+	return ok
 }
