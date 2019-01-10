@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package NetMessages;
+import "google/protobuf/timestamp.proto";
+
+message net_packet{
+    enum type{
+        PING=0;
+        PONG=1;
+        FINDNEIGHBOURREQ=2;
+        NEIGHBOUR=3;
+    }
+    type                        packet_type=1;
+    google.protobuf.Timestamp   timestamp=2;
+    bytes                       version=3;
+    bytes                       id=8;
+    bool                        gossip=9;
+    bytes                       node_id=10;
+    bytes                       node_pub_key=11;
+    bytes                       sign=12;
+    oneof data{
+        ping                    ping_data=4;
+        pong                    pong_data=5;
+        find_neighbour_req      find_neighbour_req_data=6;
+        neighbours              neighbour_data=7;
+    }
+}
+
+message ping{
+    bytes                       to=1;
+}
+message pong{
+    bytes                       to=1;
+    bytes                       reply_tok=2;              
+}
+message find_neighbour_req{
+
+}
+message neighbours{
+    repeated node  nodes=1;
+}
+message node{
+    bytes   node=1;
+}
