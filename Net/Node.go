@@ -49,7 +49,7 @@ func NewNode(host host.Host) *Node {
 	node := &Node{Host: host}
 	node.NetProtocol = NewNetProtocol(node)
 	node.MsgProtocol = NewMsgProtocol(node)
-	Config.This = node.Addrs()[0]
+	Config.This = node.Host.Addrs()
 	return node
 }
 
