@@ -9,6 +9,10 @@ message net_packet{
         PONG=1;
         FINDNEIGHBOURREQ=2;
         NEIGHBOUR=3;
+        SYNCREQ=4;
+        SYNCACK=5;
+        SYNCSTART=6;
+        SYNCDONE=7;
     }
     type                        packet_type=1;
     google.protobuf.Timestamp   timestamp=2;
@@ -23,6 +27,10 @@ message net_packet{
         pong                    pong_data=5;
         find_neighbour_req      find_neighbour_req_data=6;
         neighbours              neighbour_data=7;
+        sync_req                sync_req_data=13;
+        sync_ack                sync_ack_data=14;
+        sync_start              sync_start_data=15;
+        sync_done               sync_done_data=16;
     }
 }
 
@@ -41,4 +49,21 @@ message neighbours{
 }
 message node{
     bytes   node=1;
+}
+// we don't consider blocks with diff genesis block
+message sync_req{
+    bytes   bc_genesis_hash=1;
+    bytes   t_genesis_hash=2;
+    bytes   t_genesis2_hash=3;
+}
+message sync_ack{
+    bytes   current_block_hash=2;
+    uint64  current_block_height=3;
+}
+message sync_start{
+    bytes   current_block_hash=2;
+    uint64  current_block_height=3;
+}
+message sync_done{
+
 }
