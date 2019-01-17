@@ -15,7 +15,6 @@ import (
 
 	"github.com/amidmm/MyChain/Blockchain"
 	"github.com/amidmm/MyChain/Bundle"
-	"github.com/golang/protobuf/ptypes"
 
 	"github.com/amidmm/MyChain/Consts"
 	"github.com/amidmm/MyChain/Messages"
@@ -41,6 +40,8 @@ type Tangle struct {
 	VblocksPerRetarget  uint64 // same as blocksPerRetarget but for virtual blockchains
 	VbcDiffChangeRate   uint64 // Rate of change in diff of virtual blockchain
 	TangleParams        *tanleParams
+	GenesisHash1        []byte
+	GenesisHash2        []byte
 }
 
 type tanleParams struct {
@@ -153,7 +154,8 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 	_, err = db.Get([]byte("empty"), nil)
 	if err == leveldb.ErrNotFound {
 		t := &Tangle{}
-		genesis := GenesisBundle(bc)
+		genesis := GenesisBundle(bc, 1)
+		t.GenesisHash1 = genesis.Hash
 		FirstInital = *genesis
 		//TODO: use add block instead
 		raw, _ := proto.Marshal(genesis)
@@ -173,7 +175,8 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 		}
 		//Second Genesis
 		genesis = nil
-		genesis = GenesisBundle(bc)
+		genesis = GenesisBundle(bc, 2)
+		t.GenesisHash2 = genesis.Hash
 		LastInital = *genesis
 		//TODO: use add block instead
 		raw, _ = proto.Marshal(genesis)
@@ -205,15 +208,14 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 	return nil, Consts.ErrTangleExists
 }
 
-func GenesisBundle(bc *Blockchain.Blockchain) *msg.Packet {
+func GenesisBundle(bc *Blockchain.Blockchain, num int) *msg.Packet {
 	packet := &msg.Packet{}
 	packet.Addr = nil
 	packet.CurrentBlockNumber = bc.Tip.CurrentBlockNumber
 	packet.Diff = 1
 	packet.PacketType = msg.Packet_BUNDLE
 	packet.Prev = nil
-	packet.Sign = []byte("This is the Tangle genesis")
-	packet.Timestamp = ptypes.TimestampNow()
+	packet.Sign = []byte("This is the Tangle genesis" + string(num))
 	packet.CurrentBlockHash = bc.Tip.CurrentBlockHash
 	bun := &msg.Bundle{}
 	bun.Verify1 = nil

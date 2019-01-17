@@ -12,8 +12,6 @@ import (
 
 	"github.com/syndtr/goleveldb/leveldb/storage"
 
-	"github.com/golang/protobuf/ptypes"
-
 	"github.com/amidmm/MyChain/Packet"
 	"github.com/amidmm/MyChain/PoW"
 	"github.com/amidmm/MyChain/Transaction"
@@ -33,6 +31,7 @@ type Blockchain struct {
 	maxRetargetTimespan int64  // target timespan * adjustment factor
 	blocksPerRetarget   uint64 // target timespan / target time per block
 	chainParams         *chainParams
+	GenesisHash         []byte
 }
 
 type chainParams struct {
@@ -104,6 +103,7 @@ func NewBlockchain() (*Blockchain, error) {
 		genesis := GenesisBlock()
 		//TODO: use add block instead
 		b.Tip = genesis
+		b.GenesisHash = genesis.Hash
 		raw, _ := proto.Marshal(genesis)
 		err = db.Put(
 			bytes.Join([][]byte{
@@ -157,7 +157,6 @@ func GenesisBlock() *msg.Packet {
 	packet.PacketType = msg.Packet_BLOCK
 	packet.Prev = []byte{}
 	packet.Sign = []byte("This is the genesis")
-	packet.Timestamp = ptypes.TimestampNow()
 	block := &msg.Block{}
 	block.Reqs = []*msg.WeakReq{}
 	block.Sanities = []*msg.SanityCheck{}
