@@ -7,7 +7,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sync"
 	"time"
+
+	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/golang/protobuf/ptypes"
 
@@ -27,6 +30,14 @@ const Ping = "/Net/ping/0.0.1"
 const Pong = "/Net/pong/0.0.1"
 const FindNeighbourReq = "/Net/findNeighbour/0.0.1"
 const Neighbour = "/Net/listNeighbour/0.0.1"
+const SyncReq = "/Net/syncReq/0.0.1"
+const SyncAck = "Net/sync/0.0.1"
+
+var SyncMode = false
+var syncLock sync.Mutex
+var bestSync peer.ID
+var bestSyncHash []byte
+var genericLock sync.Mutex
 
 type NetProtocol struct {
 	Node *Node
@@ -39,6 +50,8 @@ func NewNetProtocol(node *Node) *NetProtocol {
 	node.SetStreamHandler(Pong, np.onPong)
 	node.SetStreamHandler(FindNeighbourReq, np.onFindNeighbourReq)
 	node.SetStreamHandler(Neighbour, np.onNeighbour)
+	node.SetStreamHandler(SyncReq, np.onSyncReq)
+	node.SetStreamHandler(SyncAck, np.onSyncAck)
 	return np
 }
 
@@ -103,10 +116,12 @@ func (np *NetProtocol) onPong(s inet.Stream) {
 		log.Println("\033[31m onPong: error parsing pong\033[0m")
 		return
 	}
+	// Check if it's for this host
 	isInSet := false
 	for _, v := range Config.This {
 		if bytes.Equal(v.Bytes(), data.GetPongData().To) {
 			isInSet = true
+			break
 		}
 	}
 	if !isInSet {
@@ -134,6 +149,7 @@ func (np *NetProtocol) onFindNeighbourReq(s inet.Stream) {
 	neighbourPacket := EmptyNetMsg(NetMessages.NetPacket_NEIGHBOUR, nil, false, np)
 	neighbourData := &NetMessages.Neighbours{}
 	for _, v := range np.Node.Peerstore().Peers() {
+		//TODO: remove loopbacks (in final phase)
 		if v == np.Node.ID() {
 			continue
 		}
@@ -216,6 +232,10 @@ func ValidateNetMsg(n *NetMessages.NetPacket) bool {
 		packetType = NetMessages.NetPacket_FINDNEIGHBOURREQ
 	case *NetMessages.NetPacket_NeighbourData:
 		packetType = NetMessages.NetPacket_NEIGHBOUR
+	case *NetMessages.NetPacket_SyncReqData:
+		packetType = NetMessages.NetPacket_SYNCREQ
+	case *NetMessages.NetPacket_SyncAckData:
+		packetType = NetMessages.NetPacket_SYNCACK
 	}
 	if packetType != n.PacketType {
 		return false
@@ -253,7 +273,7 @@ func (np *NetProtocol) SendPing(s inet.Stream) bool {
 	hash.Write(raw)
 	np.Req[hex.EncodeToString(hash.Sum(nil))] = pingPacket
 	if _, err := np.Node.SendPacket(pingPacket, s); err != nil {
-		log.Println("\033[31m Ping: failed to send ping:\033[0m")
+		log.Println("\033[31m Ping: failed to send ping to:" + s.Conn().RemoteMultiaddr().String() + "\033[0m")
 		return false
 	}
 	return true
@@ -291,7 +311,78 @@ func (np *NetProtocol) SendFindNeighbour(s inet.Stream) bool {
 	raw, _ := proto.Marshal(FindNeighbourPacket)
 	FindNeighbourPacket.Sign, _ = np.Node.Peerstore().PrivKey(np.Node.ID()).Sign(raw)
 	if _, err := np.Node.SendPacket(FindNeighbourPacket, s); err != nil {
-		log.Println("\033[31m Ping: failed to send ping:\033[0m")
+		log.Println("\033[31m SendFindNeighbour: failed to send FindNeighbour to:" + s.Conn().RemoteMultiaddr().String() + "\033[0m")
+		return false
+	}
+	return true
+}
+
+func (np *NetProtocol) onSyncReq(s inet.Stream) {
+	log.Println("\033[33m onSyncReq: received a new SyncReq\033[0m")
+	data, err := decodePacket(s)
+	if err != nil {
+		log.Println("\033[31m onSyncReq: error parsing SyncReq\033[0m")
+		return
+	}
+	if ok := ValidateNetMsg(data); !ok {
+		log.Println("\033[31m onSyncReq: error parsing SyncReq\033[0m")
+		return
+	}
+	if !bytes.Equal(data.GetSyncReqData().BcGenesisHash, Bc.GenesisHash) {
+		log.Println("\033[31m onSyncReq: unidentical Blockchain genesis\033[0m")
+		return
+	}
+	if !bytes.Equal(data.GetSyncReqData().TGenesisHash, T.GenesisHash1) || !bytes.Equal(data.GetSyncReqData().TGenesis2Hash, T.GenesisHash2) {
+		log.Println("\033[31m onSyncReq: unidentical Tangle genesis\033[0m")
+		return
+	}
+	syncAck := EmptyNetMsg(NetMessages.NetPacket_SYNCACK, nil, false, np)
+	syncAckData := &NetMessages.SyncAck{CurrentBlockHash: Bc.Tip.Hash, CurrentBlockHeight: Bc.Tip.CurrentBlockNumber}
+	syncAck.Data = &NetMessages.NetPacket_SyncAckData{syncAckData}
+	syncAck.Sign = nil
+	raw, _ := proto.Marshal(syncAck)
+	syncAck.Sign, _ = np.Node.Peerstore().PrivKey(np.Node.ID()).Sign(raw)
+	s, respErr := np.Node.NewStream(Ctx, s.Conn().RemotePeer(), SyncAck)
+	if respErr != nil {
+		log.Println("\033[31m onSyncReq: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + respErr.Error() + "\033[0m")
+		return
+	}
+	if _, err := np.Node.SendPacket(syncAck, s); err != nil {
+		log.Println("\033[31m onSyncReq: error sending SyncAck " + respErr.Error() + "\033[0m")
+		return
+	}
+}
+
+func (np *NetProtocol) onSyncAck(s inet.Stream) {
+	log.Println("\033[33m onSync: received a new SyncAck\033[0m")
+	data, err := decodePacket(s)
+	if err != nil {
+		log.Println("\033[31m onSync: error parsing SyncAck\033[0m")
+		return
+	}
+	if ok := ValidateNetMsg(data); !ok {
+		log.Println("\033[31m onSync: error parsing SyncAck\033[0m")
+		return
+	}
+	//TODO: handle forks much better
+	genericLock.Lock()
+	defer genericLock.Unlock()
+	if data.GetSyncAckData().CurrentBlockHeight > Bc.Tip.CurrentBlockNumber {
+		bestSync = s.Conn().RemotePeer()
+		bestSyncHash = data.GetSyncAckData().CurrentBlockHash
+	}
+}
+
+func (np *NetProtocol) SendSyncReq(s inet.Stream) bool {
+	log.Println("\033[33m SendSyncReq: sending a new SyncReq\033[0m")
+	SyncReqPacket := EmptyNetMsg(NetMessages.NetPacket_SYNCREQ, nil, false, np)
+	pd := &NetMessages.SyncReq{BcGenesisHash: Bc.GenesisHash, TGenesisHash: T.GenesisHash1, TGenesis2Hash: T.GenesisHash2}
+	SyncReqPacket.Data = &NetMessages.NetPacket_SyncReqData{pd}
+	SyncReqPacket.Sign = nil
+	raw, _ := proto.Marshal(SyncReqPacket)
+	SyncReqPacket.Sign, _ = np.Node.Peerstore().PrivKey(np.Node.ID()).Sign(raw)
+	if _, err := np.Node.SendPacket(SyncReqPacket, s); err != nil {
+		log.Println("\033[31m SendSyncReq: failed to send SyncReq to:" + s.Conn().RemoteMultiaddr().String() + "\033[0m")
 		return false
 	}
 	return true
