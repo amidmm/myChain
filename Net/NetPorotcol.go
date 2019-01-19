@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -32,6 +33,8 @@ const FindNeighbourReq = "/Net/findNeighbour/0.0.1"
 const Neighbour = "/Net/listNeighbour/0.0.1"
 const SyncReq = "/Net/syncReq/0.0.1"
 const SyncAck = "Net/sync/0.0.1"
+const SyncStart = "Net/syncStart/0.0.1"
+const SyncDone = "Net/syncDone/0.0.1"
 
 var SyncMode = false
 var syncLock sync.Mutex
@@ -52,6 +55,8 @@ func NewNetProtocol(node *Node) *NetProtocol {
 	node.SetStreamHandler(Neighbour, np.onNeighbour)
 	node.SetStreamHandler(SyncReq, np.onSyncReq)
 	node.SetStreamHandler(SyncAck, np.onSyncAck)
+	node.SetStreamHandler(SyncStart, np.onSyncStart)
+	node.SetStreamHandler(SyncDone, np.onSyncDone)
 	return np
 }
 
@@ -236,6 +241,10 @@ func ValidateNetMsg(n *NetMessages.NetPacket) bool {
 		packetType = NetMessages.NetPacket_SYNCREQ
 	case *NetMessages.NetPacket_SyncAckData:
 		packetType = NetMessages.NetPacket_SYNCACK
+	case *NetMessages.NetPacket_SyncStartData:
+		packetType = NetMessages.NetPacket_SYNCSTART
+	case *NetMessages.NetPacket_SyncDoneData:
+		packetType = NetMessages.NetPacket_SYNCDONE
 	}
 	if packetType != n.PacketType {
 		return false
@@ -386,4 +395,32 @@ func (np *NetProtocol) SendSyncReq(s inet.Stream) bool {
 		return false
 	}
 	return true
+}
+
+func (np *NetProtocol) FindBestSync() (peer.ID, []byte, error) {
+	syncLock.Lock()
+	defer syncLock.Unlock()
+	var wg sync.WaitGroup
+	defer func() {
+		bestSyncHash = []byte{}
+	}()
+	for _, peerAddr := range np.Node.Peerstore().PeersWithAddrs() {
+		pa := peerAddr
+		wg.Add(1)
+		go func(addr peer.ID) {
+			defer wg.Done()
+			s, err := np.Node.NewStream(Ctx, pa, SyncReq)
+			if err != nil {
+				return
+			}
+			np.SendSyncReq(s)
+		}(pa)
+	}
+	wg.Wait()
+	if len(bestSyncHash) == 0 {
+		return bestSync, nil, errors.New("no best peer")
+	}
+	tmpbestSync := bestSync
+	tmpbestHash := bestSyncHash
+	return tmpbestSync, tmpbestHash, nil
 }
