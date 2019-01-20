@@ -3,6 +3,10 @@ package Net
 import (
 	"bufio"
 	"log"
+	"math/rand"
+	"time"
+
+	"github.com/amidmm/MyChain/Sync"
 
 	"github.com/amidmm/MyChain/Messages"
 	inet "github.com/libp2p/go-libp2p-net"
@@ -23,6 +27,10 @@ func NewMsgProtocol(node *Node) *MsgProtocol {
 }
 
 func (mp *MsgProtocol) onMsg(s inet.Stream) {
+	if Sync.SyncMode {
+		rand.Seed(time.Now().Unix())
+		deadLockRand = rand.Int63()
+	}
 	data := &msg.Packet{}
 	decoder := protobufCodec.Multicodec(nil).Decoder(bufio.NewReader(s))
 	err := decoder.Decode(data)
@@ -30,5 +38,6 @@ func (mp *MsgProtocol) onMsg(s inet.Stream) {
 		log.Println("\033[31m onMsg " + err.Error() + "\033[31m")
 		return
 	}
+	//TODO: add a new channel to handel other peers packets while in sync mode
 	PacketChan <- data
 }

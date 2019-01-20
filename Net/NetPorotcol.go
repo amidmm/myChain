@@ -11,6 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Sync"
+
+	"github.com/amidmm/MyChain/Blockchain"
+
 	"github.com/libp2p/go-libp2p-peer"
 
 	"github.com/golang/protobuf/ptypes"
@@ -36,7 +40,6 @@ const SyncAck = "Net/sync/0.0.1"
 const SyncStart = "Net/syncStart/0.0.1"
 const SyncDone = "Net/syncDone/0.0.1"
 
-var SyncMode = false
 var syncLock sync.Mutex
 var bestSync peer.ID
 var bestSyncHash []byte
@@ -423,4 +426,122 @@ func (np *NetProtocol) FindBestSync() (peer.ID, []byte, error) {
 	tmpbestSync := bestSync
 	tmpbestHash := bestSyncHash
 	return tmpbestSync, tmpbestHash, nil
+}
+
+func (np *NetProtocol) onSyncStart(s inet.Stream) {
+	log.Println("\033[33m onSyncStart: received a new SyncStart\033[0m")
+	data, err := decodePacket(s)
+	if err != nil {
+		log.Println("\033[31m onSyncStart: error parsing SyncStart\033[0m")
+		return
+	}
+	if ok := ValidateNetMsg(data); !ok {
+		log.Println("\033[31m onSyncStart: error parsing SyncStart\033[0m")
+		return
+	}
+	//TODO: handle tangle messages !important
+	//TODO: change on fork handling
+	p, err := Bc.Ancestor(data.GetSyncStartData().CurrentBlockHeight)
+	if err != nil {
+		log.Println("\033[31m onSyncStart: can't find ancestor\033[0m")
+		return
+	}
+	if !bytes.Equal(p.Hash, data.GetSyncStartData().CurrentBlockHash) {
+		log.Println("\033[31m onSyncStart: fork detected\033[0m")
+		return
+	}
+	iter := Blockchain.BlockchainIterator{}
+	iter.InitIter(Bc)
+	pid := s.Conn().RemotePeer()
+	s, err = np.Node.NewStream(Ctx, pid, MsgProto)
+	if err != nil {
+		log.Println("\033[31m onSyncStart: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + err.Error() + "\033[0m")
+		return
+	}
+	value, _ := iter.Value()
+	if _, err := np.Node.SendPacket(value, s); err != nil {
+		log.Println("\033[31m onSyncReq: error sending SyncAck " + err.Error() + "\033[0m")
+		return
+	}
+	for iter.Prev() && data.GetSyncStartData().CurrentBlockHeight < value.CurrentBlockNumber {
+		genericLock.Lock()
+		value, _ = iter.Value()
+		s, err = np.Node.NewStream(Ctx, pid, MsgProto)
+		if err != nil {
+			log.Println("\033[31m onSyncStart: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + err.Error() + "\033[0m")
+			return
+		}
+		if _, err := np.Node.SendPacket(value, s); err != nil {
+			log.Println("\033[31m onSyncReq: error sending MsgPacket " + err.Error() + "\033[0m")
+			return
+		}
+		genericLock.Unlock()
+	}
+	time.Sleep(5 * time.Second)
+	donePacket := EmptyNetMsg(NetMessages.NetPacket_SYNCDONE, nil, false, np)
+	dd := &NetMessages.SyncDone{}
+	donePacket.Data = &NetMessages.NetPacket_SyncDoneData{dd}
+	donePacket.Sign = nil
+	raw, _ := proto.Marshal(donePacket)
+	donePacket.Sign, _ = np.Node.Peerstore().PrivKey(np.Node.ID()).Sign(raw)
+	s, err = np.Node.NewStream(Ctx, pid, SyncDone)
+	if err != nil {
+		log.Println("\033[31m onSyncStart: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + err.Error() + "\033[0m")
+		return
+	}
+	if _, err := np.Node.SendPacket(donePacket, s); err != nil {
+		log.Println("\033[31m onSyncReq: error sending SyncDone " + err.Error() + "\033[0m")
+		return
+	}
+}
+
+func (np *NetProtocol) onSyncDone(s inet.Stream) {
+	log.Println("\033[33m onSyncDone: received a new SyncDone\033[0m")
+	data, err := decodePacket(s)
+	if err != nil {
+		log.Println("\033[31m onSyncDone: error parsing SyncDone\033[0m")
+		return
+	}
+	if ok := ValidateNetMsg(data); !ok {
+		log.Println("\033[31m onSyncDone: error parsing SyncDone\033[0m")
+		return
+	}
+	Sync.SyncMode = false
+	deadLockDone <- true
+	syncLock.Unlock()
+}
+
+func (np *NetProtocol) SendSyncStart(s inet.Stream) bool {
+	log.Println("\033[33m SendSyncStart: sending a new SyncStart\033[0m")
+	SyncStartPacket := EmptyNetMsg(NetMessages.NetPacket_SYNCSTART, nil, false, np)
+	pd := &NetMessages.SyncStart{CurrentBlockHash: Bc.Tip.Hash, CurrentBlockHeight: Bc.Tip.CurrentBlockNumber}
+	SyncStartPacket.Data = &NetMessages.NetPacket_SyncStartData{pd}
+	SyncStartPacket.Sign = nil
+	raw, _ := proto.Marshal(SyncStartPacket)
+	SyncStartPacket.Sign, _ = np.Node.Peerstore().PrivKey(np.Node.ID()).Sign(raw)
+	if _, err := np.Node.SendPacket(SyncStartPacket, s); err != nil {
+		log.Println("\033[31m SendSyncStart: failed to send SyncStart to:" + s.Conn().RemoteMultiaddr().String() + "\033[0m")
+		return false
+	}
+	syncLock.Lock()
+	Sync.SyncMode = true
+	go deadLockDetect()
+	return true
+}
+
+func deadLockDetect() {
+	t := time.NewTimer(time.Second * 60)
+	start := deadLockRand
+	for {
+		select {
+		case <-t.C:
+			if deadLockRand == start {
+				Sync.SyncMode = false
+				syncLock.Unlock()
+				return
+			}
+		case <-deadLockDone:
+			return
+		}
+	}
 }

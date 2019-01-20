@@ -33,6 +33,8 @@ var PacketChan chan *msg.Packet
 var Bc *Blockchain.Blockchain
 var T *Tangle.Tangle
 var User *Account.User
+var deadLockRand int64
+var deadLockDone chan bool
 
 func init() {
 	var err error
@@ -43,6 +45,7 @@ func init() {
 	go func() {
 		Sync.IncomingPacket(Ctx, PacketChan, Bc, T)
 	}()
+	deadLockDone = make(chan bool)
 }
 
 func NewNode(host host.Host) *Node {
