@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -24,6 +25,8 @@ import (
 )
 
 var UnsyncPoolDB *leveldb.DB
+var SyncMode = false
+var syncLock sync.Mutex
 
 func init() {
 	s, err := storage.OpenFile(Consts.UnsyncPool, false)
@@ -39,7 +42,9 @@ func init() {
 func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) {
 	for {
 		select {
-		case p := <-packetChan:
+		case x := <-packetChan:
+			p := x
+		test:
 			hash := sha1.New()
 			hash.Write(p.Hash)
 			if ok, err := IncomingPacketValidation(p, bc, t); err != nil || !ok {
@@ -63,6 +68,8 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 				continue
 			}
+			hash = sha1.New()
+			hash.Write(p.Hash)
 			unsyncRaw, err := UnsyncPoolDB.Get(p.Hash, nil)
 			if err == leveldb.ErrNotFound {
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
@@ -75,20 +82,6 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 			} else {
-				unsyncPacket := &msg.Packet{}
-				proto.Unmarshal(unsyncRaw, unsyncPacket)
-				unsyncSha1 := sha1.New()
-				unsyncSha1.Write(unsyncPacket.Hash)
-				if ok, err := ProcessPacket(unsyncPacket, bc, t); err != nil || !ok {
-					errStr := ""
-					if err != nil {
-						errStr = err.Error()
-					}
-					log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\t" + errStr + "\033[0m")
-					UnsyncPoolDB.Delete(unsyncPacket.Hash, nil)
-					continue
-				}
-				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(unsyncSha1.Sum(nil)) + "\033[0m")
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
 					errStr := ""
 					if err != nil {
@@ -98,6 +91,10 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 					continue
 				}
 				log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+				unsyncPacket := &msg.Packet{}
+				proto.Unmarshal(unsyncRaw, unsyncPacket)
+				p = unsyncPacket
+				goto test
 			}
 		case <-ctx.Done():
 			log.Println("\033[41m Sync: exiting \033[0m")
@@ -159,9 +156,11 @@ func IncomingPacketValidation(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangl
 		return false, err
 	}
 	//TODO: is it needed???
-	lim := time.Now().Unix() - int64(Consts.TimestampBound.Seconds())
-	if p.Timestamp.Seconds < lim {
-		return false, nil
+	if !SyncMode {
+		lim := time.Now().Unix() - int64(Consts.TimestampBound.Seconds())
+		if p.Timestamp.Seconds < lim {
+			return false, nil
+		}
 	}
 
 	if p.PacketType != msg.Packet_BLOCK {
