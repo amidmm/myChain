@@ -68,8 +68,6 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 				continue
 			}
-			hash = sha1.New()
-			hash.Write(p.Hash)
 			unsyncRaw, err := UnsyncPoolDB.Get(p.Hash, nil)
 			if err == leveldb.ErrNotFound {
 				if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
