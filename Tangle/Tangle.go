@@ -279,7 +279,7 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	rawV2, err := t.Relations.Get(data.Verify2, nil)
 	if err == leveldb.ErrNotFound {
 		err = nil
-		rawV1 = []byte{}
+		rawV2 = []byte{}
 	}
 	if err != nil {
 		return err
@@ -293,9 +293,13 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	if err != nil {
 		return err
 	}
-	t.Relations.Put(data.Verify2, rawV1, nil)
+	t.Relations.Put(data.Verify2, rawV2, nil)
 	if special && p.PacketType == msg.Packet_BUNDLE {
 		rawV3, err := t.Relations.Get(p.GetBundleData().Verify3, nil)
+		if err == leveldb.ErrNotFound {
+			err = nil
+			rawV3 = []byte{}
+		}
 		if err != nil {
 			return err
 		}
