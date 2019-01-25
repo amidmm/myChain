@@ -21,6 +21,8 @@ import (
 
 var UTXOlock sync.Mutex
 var UTXOdatabase *leveldb.DB
+var ThisUserDb *leveldb.DB
+var ThisUserAddr []byte
 
 func init() {
 	err := OpenUTXO()
@@ -132,7 +134,7 @@ func GetUTXO(hash []byte) (*msg.Tx, error) {
 	return t, nil
 }
 
-func PutUTXO(t *msg.Tx) error {
+func PutUTXO(t *msg.Tx, addr []byte) error {
 	raw, err := proto.Marshal(t)
 	if err != nil {
 		return err
@@ -141,6 +143,12 @@ func PutUTXO(t *msg.Tx) error {
 	err = UTXOdatabase.Put(hash, raw, nil)
 	if err != nil {
 		return err
+	}
+	if addr != nil && ThisUserDb != nil && bytes.Equal(addr, ThisUserAddr) {
+		err = ThisUserDb.Put(hash, raw, nil)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -153,6 +161,9 @@ func UnUTXO(t msg.Tx) error {
 	if err != nil {
 		return err
 	}
+	if ThisUserDb != nil {
+		ThisUserDb.Delete(hash, nil)
+	}
 	return nil
 }
 
@@ -162,6 +173,9 @@ func UnUTXOWithHash(hash []byte) error {
 	err := UTXOdatabase.Delete(hash, nil)
 	if err != nil {
 		return err
+	}
+	if ThisUserDb != nil {
+		ThisUserDb.Delete(hash, nil)
 	}
 	return nil
 }
@@ -185,7 +199,7 @@ func HandleBundle(p *msg.Packet) (bool, error) {
 				if p.GetBundleData().Transactions[last].Value > 0 {
 					UnUTXOWithHash(p.GetBundleData().Transactions[last].Hash)
 				} else if p.GetBundleData().Transactions[last].Value < 0 {
-					PutUTXO(p.GetBundleData().Transactions[last])
+					PutUTXO(p.GetBundleData().Transactions[last], p.Addr)
 				}
 			}
 		}
@@ -193,7 +207,7 @@ func HandleBundle(p *msg.Packet) (bool, error) {
 	data := p.GetBundleData().Transactions
 	for i, v := range data {
 		if v.Value > 0 {
-			if err := PutUTXO(v); err != nil {
+			if err := PutUTXO(v, p.Addr); err != nil {
 				return false, err
 			}
 		} else if v.Value < 0 {
