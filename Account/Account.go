@@ -1,11 +1,16 @@
 package Account
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
 	mrand "math/rand"
 	"sync"
+
+	"github.com/golang/protobuf/proto"
+
+	"github.com/amidmm/MyChain/Messages"
 
 	"github.com/libp2p/go-libp2p-peer"
 
@@ -23,6 +28,7 @@ type User struct {
 	PrivKey  crypto.PrivKey
 	Addr     peer.ID
 	userLock sync.Mutex
+	DB       *leveldb.DB
 }
 
 func CreateUser(name string, pub crypto.PubKey, priv crypto.PrivKey, debug bool, debugSeed int64) error {
@@ -58,13 +64,13 @@ func CreateUser(name string, pub crypto.PubKey, priv crypto.PrivKey, debug bool,
 	if err != nil {
 		return err
 	}
-	db.Put([]byte("pub"), raw, nil)
+	db.Put([]byte("metadatapub"), raw, nil)
 	raw, err = crypto.MarshalPrivateKey(u.PrivKey)
 	if err != nil {
 		return err
 	}
-	db.Put([]byte("priv"), raw, nil)
-	db.Put([]byte("addr"), []byte(peer.IDB58Encode(u.Addr)), nil)
+	db.Put([]byte("metadatapriv"), raw, nil)
+	db.Put([]byte("metadataaddr"), []byte(peer.IDB58Encode(u.Addr)), nil)
 	return nil
 }
 
@@ -91,27 +97,28 @@ func LoadUser(name string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer path.Close()
 	db, err := leveldb.Open(path, nil)
 	if err != nil {
+		path.Close()
 		return nil, err
 	}
-	defer db.Close()
-	rawPub, err := db.Get([]byte("pub"), nil)
+	rawPub, err := db.Get([]byte("metadatapub"), nil)
 	if err != nil {
+		path.Close()
+		db.Close()
 		return nil, err
 	}
 	if u.PubKey, err = crypto.UnmarshalPublicKey(rawPub); err != nil {
 		return nil, err
 	}
-	rawPriv, err := db.Get([]byte("priv"), nil)
+	rawPriv, err := db.Get([]byte("metadatapriv"), nil)
 	if err != nil {
 		return nil, err
 	}
 	if u.PrivKey, err = crypto.UnmarshalPrivateKey(rawPriv); err != nil {
 		return nil, err
 	}
-	rawAddr, err := db.Get([]byte("addr"), nil)
+	rawAddr, err := db.Get([]byte("metadataaddr"), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +127,7 @@ func LoadUser(name string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	u.DB = db
 	return u, nil
 }
 
@@ -130,4 +138,40 @@ func SetAddr(u *User) error {
 		return err
 	}
 	return nil
+}
+
+func (u *User) GetUTXOList() []*msg.Tx {
+	iter := u.DB.NewIterator(nil, nil)
+	var list []*msg.Tx
+	for iter.Next() {
+		if bytes.HasPrefix(iter.Key(), []byte("metadata")) {
+			continue
+		}
+		packet := &msg.Tx{}
+		_ = proto.Unmarshal(iter.Value(), packet)
+		list = append(list, packet)
+	}
+	iter.Release()
+	return list
+}
+
+func (u *User) GetUTXO(value int64) *msg.Tx {
+	tx := &msg.Tx{}
+	if value <= 0 {
+		return nil
+	}
+	iter := u.DB.NewIterator(nil, nil)
+	for iter.Next() {
+		if bytes.HasPrefix(iter.Key(), []byte("metadata")) {
+			continue
+		}
+		packet := &msg.Tx{}
+		_ = proto.Unmarshal(iter.Value(), packet)
+		if packet.Value >= value {
+			tx = packet
+			break
+		}
+	}
+	iter.Release()
+	return tx
 }
