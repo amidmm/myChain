@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ type Tangle struct {
 	UnApproved          *leveldb.DB
 	DB                  *leveldb.DB
 	UsersTips           *leveldb.DB
+	TmapBC              *leveldb.DB
 	Blockchain          *Blockchain.Blockchain
 	InitialCounter      uint64
 	CurrentDiff         uint32
@@ -83,6 +85,7 @@ type Iterator struct {
 	UnApproved *leveldb.DB
 	DB         *leveldb.DB
 	UsersTips  *leveldb.DB
+	TmapBC     *leveldb.DB
 	Err        error
 }
 
@@ -90,64 +93,76 @@ var Relations *leveldb.DB = nil
 var UnApproved *leveldb.DB = nil
 var DataBase *leveldb.DB = nil
 var UserTips *leveldb.DB = nil
+var TmapBC *leveldb.DB = nil
 var genericLock sync.Mutex
 var FirstInital msg.Packet
 var LastInital msg.Packet
+var tmpCounter = 2
 
 //OpenTangle opens Relations,UnApproved,DataBase
-func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
-	if Relations != nil && UnApproved != nil && DataBase != nil && UserTips != nil {
-		return Relations, UnApproved, DataBase, UserTips, nil
-	} else if Relations == nil && UnApproved == nil && DataBase == nil && UserTips == nil {
+func OpenTangle() (*leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, *leveldb.DB, error) {
+	if Relations != nil && UnApproved != nil && DataBase != nil && UserTips != nil && TmapBC != nil {
+		return Relations, UnApproved, DataBase, UserTips, TmapBC, nil
+	} else if Relations == nil && UnApproved == nil && DataBase == nil && UserTips == nil && TmapBC == nil {
 		genericLock.Lock()
 		defer genericLock.Unlock()
 		s, err := storage.OpenFile(Consts.TangleDB, false)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		db, err := leveldb.Open(s, nil)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		DataBase = db
 
 		r, err := storage.OpenFile(Consts.TangleRelations, false)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		re, err := leveldb.Open(r, nil)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		Relations = re
 
 		u, err := storage.OpenFile(Consts.TangleUnApproved, false)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		un, err := leveldb.Open(u, nil)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		UnApproved = un
 
 		uTips, err := storage.OpenFile(Consts.UserTips, false)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		userTips, err := leveldb.Open(uTips, nil)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		UserTips = userTips
-		return re, un, db, userTips, nil
+
+		TmB, err := storage.OpenFile(Consts.TangleBcMap, false)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		tmapBC, err := leveldb.Open(TmB, nil)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		TmapBC = tmapBC
+		return re, un, db, userTips, tmapBC, nil
 	} else {
-		return nil, nil, nil, nil, Consts.ErrInconsistantTangleDB
+		return nil, nil, nil, nil, nil, Consts.ErrInconsistantTangleDB
 	}
 }
 
 func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
-	re, un, db, users, err := OpenTangle()
+	re, un, db, users, TmBC, err := OpenTangle()
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +185,10 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 			return nil, err
 		}
 		err = un.Put(genesis.Hash, []byte{}, nil)
+		if err != nil {
+			return nil, err
+		}
+		err = TmBC.Put(bytes.Join([][]byte{genesis.CurrentBlockHash, genesis.Hash}, []byte{}), genesis.Hash, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -198,11 +217,16 @@ func NewTangle(bc *Blockchain.Blockchain) (*Tangle, error) {
 		if err != nil {
 			return nil, err
 		}
+		err = TmBC.Put(bytes.Join([][]byte{genesis.CurrentBlockHash, genesis.Hash}, []byte{}), genesis.Hash, nil)
+		if err != nil {
+			return nil, err
+		}
 		t.DB = db
 		t.Relations = re
 		t.UnApproved = un
 		t.UsersTips = users
 		t.Blockchain = bc
+		t.TmapBC = TmBC
 		return t, nil
 	}
 	return nil, Consts.ErrTangleExists
@@ -250,7 +274,7 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	case *msg.Packet_BundleData:
 		data.Verify1 = p.GetBundleData().Verify1
 		data.Verify2 = p.GetBundleData().Verify2
-		data.Verify2 = p.GetBundleData().Verify3
+		data.Verify3 = p.GetBundleData().Verify3
 	case *msg.Packet_InitialData:
 		data.Verify1 = p.GetInitialData().Verify1
 		data.Verify2 = p.GetInitialData().Verify2
@@ -345,6 +369,13 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 			return err
 		}
 	}
+	err = t.TmapBC.Put(bytes.Join([][]byte{p.CurrentBlockHash, p.Hash}, []byte{}), p.Hash, nil)
+	x := bytes.Join([][]byte{p.CurrentBlockHash, p.Hash}, []byte{})
+	_ = x
+	if err != nil {
+		return err
+	}
+	tmpCounter++
 	return nil
 }
 
@@ -352,12 +383,19 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 	//TODO: must use age check and do MCMC
 	iter := t.UnApproved.NewIterator(nil, nil)
-	iter.Next()
+	rand.Seed(time.Now().Unix())
+	r := rand.Int31n(int32(tmpCounter))
 	v1 := make([]byte, 64)
 	v2 := make([]byte, 64)
-	copy(v1, iter.Key())
-	iter.Next()
-	copy(v2, iter.Key())
+	if r == 0 {
+		r++
+	}
+	for iter.Next() && r > 0 {
+		copy(v1, iter.Key())
+		iter.Next()
+		copy(v2, iter.Key())
+	}
+
 	if sep {
 		iter.Next()
 		v3 := iter.Key()
@@ -365,7 +403,7 @@ func (t *Tangle) PickUnapproved(sep bool) ([]byte, []byte, []byte) {
 		return v1, v2, v3
 	}
 	iter.Release()
-	t.UnApproved.Delete(v1, nil)
+	// t.UnApproved.Delete(v1, nil)
 	return v1, v2, nil
 }
 
@@ -435,7 +473,7 @@ func (ti *Iterator) ResetErr() {
 
 // InitIter initalize the iterator for a Tangle
 func (ti *Iterator) InitIter(tip []*msg.Packet) error {
-	ti.Relations, ti.UnApproved, ti.DB, ti.UsersTips, _ = OpenTangle()
+	ti.Relations, ti.UnApproved, ti.DB, ti.UsersTips, ti.TmapBC, _ = OpenTangle()
 	ti.Tips = tip
 	return nil
 }
@@ -569,6 +607,7 @@ func (t *Tangle) Close() error {
 	t.Relations.Close()
 	t.UnApproved.Close()
 	t.UsersTips.Close()
+	t.TmapBC.Close()
 	log.Println("Tangle databases is down...")
 	return nil
 }
@@ -721,7 +760,7 @@ func (t *Tangle) ValidateVerify(p *msg.Packet, sep bool) (bool, error) {
 	case *msg.Packet_BundleData:
 		data.Verify1 = p.GetBundleData().Verify1
 		data.Verify2 = p.GetBundleData().Verify2
-		data.Verify2 = p.GetBundleData().Verify3
+		data.Verify3 = p.GetBundleData().Verify3
 	case *msg.Packet_InitialData:
 		data.Verify1 = p.GetInitialData().Verify1
 		data.Verify2 = p.GetInitialData().Verify2
