@@ -11,7 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Messages"
+
 	"github.com/amidmm/MyChain/Sync"
+	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"github.com/amidmm/MyChain/Blockchain"
 
@@ -44,6 +47,7 @@ var syncLock sync.Mutex
 var bestSync peer.ID
 var bestSyncHash []byte
 var genericLock sync.Mutex
+var bundleLock sync.Mutex
 
 type NetProtocol struct {
 	Node *Node
@@ -450,8 +454,12 @@ func (np *NetProtocol) onSyncStart(s inet.Stream) {
 		log.Println("\033[31m onSyncStart: fork detected\033[0m")
 		return
 	}
-	iter := Blockchain.BlockchainIterator{}
+	iter := &Blockchain.BlockchainIterator{}
 	iter.InitIter(Bc)
+	err = iter.Seek(data.GetSyncStartData().CurrentBlockHash)
+	if err != nil {
+		log.Println("\033[31m onSyncStart: error seeking\033[0m")
+	}
 	pid := s.Conn().RemotePeer()
 	s, err = np.Node.NewStream(Ctx, pid, MsgProto)
 	if err != nil {
@@ -460,10 +468,35 @@ func (np *NetProtocol) onSyncStart(s inet.Stream) {
 	}
 	value, _ := iter.Value()
 	if _, err := np.Node.SendPacket(value, s); err != nil {
-		log.Println("\033[31m onSyncReq: error sending SyncAck " + err.Error() + "\033[0m")
+		log.Println("\033[31m onSyncReq: error sending Block " + err.Error() + "\033[0m")
 		return
 	}
-	for iter.Prev() && data.GetSyncStartData().CurrentBlockHeight < value.CurrentBlockNumber {
+	s.Close()
+	start := bytes.Join([][]byte{value.Hash, Consts.Empty}, []byte{})
+	limit := bytes.Join([][]byte{value.Hash, Consts.Full}, []byte{})
+	iterDb := T.TmapBC.NewIterator(&util.Range{Start: start, Limit: limit}, nil)
+	for iterDb.Next() {
+		bundleLock.Lock()
+		bundle := &msg.Packet{}
+		x := iterDb.Value()
+		_ = x
+		y := iterDb.Key()
+		_ = y
+		raw, _ := T.DB.Get(bytes.Join([][]byte{[]byte("b"), iterDb.Value()}, []byte{}), nil)
+		err = proto.Unmarshal(raw, bundle)
+		s, err = np.Node.NewStream(Ctx, pid, MsgProto)
+		if err != nil {
+			log.Println("\033[31m onSyncStart: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + err.Error() + "\033[0m")
+			return
+		}
+		if _, err := np.Node.SendPacket(bundle, s); err != nil {
+			log.Println("\033[31m onSyncReq: error sending bundle " + err.Error() + "\033[0m")
+			return
+		}
+		s.Close()
+		bundleLock.Unlock()
+	}
+	for iter.Next() {
 		genericLock.Lock()
 		value, _ = iter.Value()
 		s, err = np.Node.NewStream(Ctx, pid, MsgProto)
@@ -475,9 +508,30 @@ func (np *NetProtocol) onSyncStart(s inet.Stream) {
 			log.Println("\033[31m onSyncReq: error sending MsgPacket " + err.Error() + "\033[0m")
 			return
 		}
+		s.Close()
+		start = bytes.Join([][]byte{value.Hash, Consts.Empty}, []byte{})
+		limit = bytes.Join([][]byte{value.Hash, Consts.Full}, []byte{})
+		iterDb = T.TmapBC.NewIterator(&util.Range{Start: start, Limit: limit}, nil)
+		for iterDb.Next() {
+			bundleLock.Lock()
+			bundle := &msg.Packet{}
+			raw, _ := T.DB.Get(bytes.Join([][]byte{[]byte("b"), iterDb.Value()}, []byte{}), nil)
+			_ = proto.Unmarshal(raw, bundle)
+			s, err = np.Node.NewStream(Ctx, pid, MsgProto)
+			if err != nil {
+				log.Println("\033[31m onSyncStart: error creating stream to" + s.Conn().RemotePeer().String() + "\t" + err.Error() + "\033[0m")
+				return
+			}
+			if _, err := np.Node.SendPacket(bundle, s); err != nil {
+				log.Println("\033[31m onSyncReq: error sending bundle " + err.Error() + "\033[0m")
+				return
+			}
+			s.Close()
+			bundleLock.Unlock()
+		}
 		genericLock.Unlock()
 	}
-	time.Sleep(5 * time.Second)
+
 	donePacket := EmptyNetMsg(NetMessages.NetPacket_SYNCDONE, nil, false, np)
 	dd := &NetMessages.SyncDone{}
 	donePacket.Data = &NetMessages.NetPacket_SyncDoneData{dd}
@@ -493,6 +547,7 @@ func (np *NetProtocol) onSyncStart(s inet.Stream) {
 		log.Println("\033[31m onSyncReq: error sending SyncDone " + err.Error() + "\033[0m")
 		return
 	}
+	s.Close()
 }
 
 func (np *NetProtocol) onSyncDone(s inet.Stream) {
