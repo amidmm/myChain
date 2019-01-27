@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Utils"
+
 	"github.com/golang/protobuf/jsonpb"
 
 	"github.com/syndtr/goleveldb/leveldb/storage"
@@ -26,6 +28,7 @@ import (
 type Blockchain struct {
 	Tip                 *msg.Packet
 	DB                  *leveldb.DB
+	Relation            *leveldb.DB
 	chainLock           sync.Mutex
 	minRetargetTimespan int64  // target timespan / adjustment factor
 	maxRetargetTimespan int64  // target timespan * adjustment factor
@@ -64,36 +67,47 @@ func (b *Blockchain) InitBlockchain() {
 }
 
 type BlockchainIterator struct {
-	Tip msg.Packet
-	DB  *leveldb.DB
-	Err error
+	Tip      msg.Packet
+	DB       *leveldb.DB
+	Relation *leveldb.DB
+	Err      error
 }
 
 var DataBase *leveldb.DB = nil
+var Relation *leveldb.DB = nil
 var genericLock sync.Mutex
 
 // OpenBlockChain opens blockchain Database
-func OpenBlockChain() (*leveldb.DB, error) {
-	if DataBase != nil {
-		return DataBase, nil
+func OpenBlockChain() (*leveldb.DB, *leveldb.DB, error) {
+	if DataBase != nil && Relation != nil {
+		return DataBase, Relation, nil
 	}
 	genericLock.Lock()
 	defer genericLock.Unlock()
 	s, err := storage.OpenFile(Consts.BlockchainDB, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	db, err := leveldb.Open(s, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	re, err := storage.OpenFile(Consts.BlockchainRelation, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	rel, err := leveldb.Open(re, nil)
+	if err != nil {
+		return nil, nil, err
 	}
 	DataBase = db
-	return db, nil
+	Relation = rel
+	return db, rel, nil
 }
 
 //NewBlockchain creates a new blockchain
 func NewBlockchain() (*Blockchain, error) {
-	db, err := OpenBlockChain()
+	db, rel, err := OpenBlockChain()
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +129,12 @@ func NewBlockchain() (*Blockchain, error) {
 		if err != nil {
 			return nil, err
 		}
+		err = rel.Put(genesis.Hash, []byte{}, nil)
+		if err != nil {
+			return nil, err
+		}
 		b.DB = db
+		b.Relation = rel
 		return &b, nil
 	}
 	return nil, Consts.ErrBlockchainExists
@@ -149,7 +168,6 @@ func (b *Blockchain) ReadBlockchainTip() (*msg.Packet, error) {
 
 //GenesisBlock generates the first block
 func GenesisBlock() *msg.Packet {
-	//TODO: change addrs, Sign and Bundle to a valid one
 	packet := &msg.Packet{}
 	packet.Addr = []byte{}
 	packet.CurrentBlockNumber = 1
@@ -192,10 +210,25 @@ func (b *Blockchain) AddBlock(p *msg.Packet) error {
 		if err != nil {
 			return err
 		}
-		Transaction.PutUTXO(p.GetBlockData().Coinbase)
+		Transaction.PutUTXO(p.GetBlockData().Coinbase, p.Addr)
 		if err != nil {
 			return err
 		}
+
+		rawPrev, err := b.Relation.Get(p.Prev, nil)
+		if err == leveldb.ErrNotFound {
+			err = nil
+			rawPrev = []byte{}
+		}
+		if err != nil {
+			return err
+		}
+		rawPrev, err = Utils.AppendMarshalSha3(rawPrev, p.Hash)
+		if err != nil {
+			return err
+		}
+		b.Relation.Put(p.Prev, rawPrev, nil)
+
 		b.Tip = p
 		return nil
 	}
@@ -248,18 +281,54 @@ func (b *BlockchainIterator) ResetErr() {
 
 // InitIter initalize the iterator for a blockchain
 func (b *BlockchainIterator) InitIter(blockchain *Blockchain) error {
-	if blockchain.DB == nil {
-		db, err := OpenBlockChain()
+	if blockchain.DB == nil && blockchain.Relation == nil {
+		db, rel, err := OpenBlockChain()
 		if err != nil {
 			b.Err = err
 			return err
 		}
 		blockchain.DB = db
+		blockchain.Relation = rel
 		b.DB = db
+		b.Relation = rel
 	}
 	b.DB = blockchain.DB
+	b.Relation = blockchain.Relation
 	b.Tip = *blockchain.Tip
 	return nil
+}
+
+func (b *BlockchainIterator) Seek(blockHash []byte) error {
+	tipraw, err := b.DB.Get(bytes.Join(
+		[][]byte{[]byte("b"), blockHash}, []byte{}),
+		nil)
+	if err != nil {
+		return err
+	}
+	tip := &msg.Packet{}
+	err = proto.Unmarshal(tipraw, tip)
+	b.Tip = *tip
+	return err
+}
+
+func (b *BlockchainIterator) Next() bool {
+	raw, err := b.Relation.Get(b.Tip.Hash, nil)
+	if err != nil {
+		b.Err = err
+		return false
+	}
+	sha3Out, err := Utils.UnMarshalSha3List(raw)
+	if err != nil {
+		return false
+	}
+	if len(sha3Out) == 0 {
+		return false
+	}
+	tip := &msg.Packet{}
+	data, _ := b.DB.Get(bytes.Join([][]byte{[]byte("b"), sha3Out[0]}, []byte{}), nil)
+	_ = proto.Unmarshal(data, tip)
+	b.Tip = *tip
+	return true
 }
 
 //ExportToJSON exports Blockchain as JSON
