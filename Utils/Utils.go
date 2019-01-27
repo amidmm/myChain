@@ -110,9 +110,13 @@ func RemoveExistingDB() {
 	os.RemoveAll(Consts.TangleUnApproved)
 	os.RemoveAll(Consts.UTXODB)
 	os.RemoveAll(Consts.UserTips)
+	os.RemoveAll(Consts.UnsyncPool)
+	os.RemoveAll(Consts.TangleBcMap)
+	os.RemoveAll(Consts.BlockchainRelation)
 }
 
-// MarshalPacketCounter marshals the counters for virtual blockchains inn tangle
+// MarshalPacketCounter marshals the counters for virtual blockchains in tangle
+// map[blockNumber]Counter
 func MarshalPacketCounter(data map[uint64]uint64, lastBlockToVerify uint64) ([]byte, error) {
 	CheckLengthPacketCounter(data, lastBlockToVerify)
 	var buf bytes.Buffer
