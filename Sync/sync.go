@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"log"
-	"os"
 	"sync"
 	"time"
 
@@ -35,21 +34,11 @@ var syncLock sync.Mutex
 var UnsyncPoolDBTx *leveldb.DB
 
 func init() {
-	//TODO: tmp
-	os.RemoveAll(Consts.UnsyncPool)
 	s, err := storage.OpenFile(Consts.UnsyncPool, false)
 	if err != nil {
 		return
 	}
 	UnsyncPoolDB, err = leveldb.Open(s, nil)
-	if err != nil {
-		return
-	}
-	s2, err := storage.OpenFile(Consts.UnsyncPoolTx, false)
-	if err != nil {
-		return
-	}
-	UnsyncPoolDBTx, err = leveldb.Open(s2, nil)
 	if err != nil {
 		return
 	}
@@ -66,7 +55,6 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				log.Println("\033[31m Sync: repetead packet\033[0m")
 				continue
 			}
-			// var stack []*msg.Packet
 			if ok, err := IncomingPacketValidation(p, bc, t); err != nil || !ok {
 				hash := sha1.New()
 				hash.Write(p.Hash)
@@ -348,7 +336,6 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) bool
 			errStr = err.Error()
 		}
 		log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
-		panic(1)
 		return false
 	}
 	log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
