@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"log"
+	"sync"
 
 	"github.com/amidmm/MyChain/Account"
 
@@ -30,6 +31,7 @@ type Node struct {
 
 var Ctx = context.Background()
 var PacketChan chan *msg.Packet
+var AdvertiserChan chan *msg.Packet
 var Bc *Blockchain.Blockchain
 var T *Tangle.Tangle
 var User *Account.User
@@ -38,12 +40,12 @@ var deadLockDone chan bool
 
 func init() {
 	var err error
-	Ctx, PacketChan, Bc, T, User, err = Bootstrap.Run()
+	Ctx, PacketChan, Bc, T, User, AdvertiserChan, err = Bootstrap.Run()
 	if err != nil {
 		log.Panicln("Can't start Node")
 	}
 	go func() {
-		Sync.IncomingPacket(Ctx, PacketChan, Bc, T)
+		Sync.IncomingPacket(Ctx, PacketChan, Bc, T, AdvertiserChan)
 	}()
 	deadLockDone = make(chan bool)
 }
@@ -53,10 +55,15 @@ func NewNode(host host.Host) *Node {
 	node.NetProtocol = NewNetProtocol(node)
 	node.MsgProtocol = NewMsgProtocol(node)
 	Config.This = node.Host.Addrs()
+	go node.Advertiser()
 	return node
 }
 
+var lock sync.Mutex
+
 func (n *Node) SendPacket(data proto.Message, s inet.Stream) (bool, error) {
+	lock.Lock()
+	defer lock.Unlock()
 	writer := bufio.NewWriter(s)
 	enc := protobufCodec.Multicodec(nil).Encoder(writer)
 	if err := enc.Encode(data); err != nil {

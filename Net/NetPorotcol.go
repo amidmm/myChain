@@ -103,7 +103,7 @@ func (np *NetProtocol) onPing(s inet.Stream) {
 		return
 	}
 	if _, err := np.Node.SendPacket(pongPacket, s); err != nil {
-		log.Println("\033[31m onPing: error sending pong " + respErr.Error() + "\033[0m")
+		log.Println("\033[31m onPing: error sending pong " + err.Error() + "\033[0m")
 		return
 	}
 	ipfsaddr, err := ma.NewMultiaddrBytes(data.NodeId)
@@ -188,7 +188,7 @@ func (np *NetProtocol) onFindNeighbourReq(s inet.Stream) {
 		return
 	}
 	if _, err := np.Node.SendPacket(neighbourPacket, s); err != nil {
-		log.Println("\033[31m onFindNeighbourReq: error sending Neighbour " + respErr.Error() + "\033[0m")
+		log.Println("\033[31m onFindNeighbourReq: error sending Neighbour " + err.Error() + "\033[0m")
 		return
 	}
 }
@@ -364,7 +364,7 @@ func (np *NetProtocol) onSyncReq(s inet.Stream) {
 		return
 	}
 	if _, err := np.Node.SendPacket(syncAck, s); err != nil {
-		log.Println("\033[31m onSyncReq: error sending SyncAck " + respErr.Error() + "\033[0m")
+		log.Println("\033[31m onSyncReq: error sending SyncAck " + err.Error() + "\033[0m")
 		return
 	}
 }
@@ -597,6 +597,26 @@ func deadLockDetect() {
 			}
 		case <-deadLockDone:
 			return
+		}
+	}
+}
+
+func (np *NetProtocol) Advertiser() {
+	for {
+		select {
+		case p := <-AdvertiserChan:
+			for _, peerAddr := range np.Node.Peerstore().PeersWithAddrs() {
+				s, err := np.Node.MsgProtocol.Node.NewStream(Ctx, peerAddr, MsgProto)
+				if err != nil {
+					continue
+				}
+				if _, err := np.Node.SendPacket(p, s); err != nil {
+					log.Println("\033[31m Advertiser: error sending Message " + err.Error() + "\033[0m")
+					return
+				}
+			}
+		case <-Ctx.Done():
+			break
 		}
 	}
 }

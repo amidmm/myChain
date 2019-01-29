@@ -44,7 +44,7 @@ func init() {
 	}
 }
 
-func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) {
+func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) {
 	for {
 		select {
 		case x := <-packetChan:
@@ -65,10 +65,10 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 				log.Println("\033[31m Sync: Invalid packet1:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 				continue
 			}
-			if ok := PreProcess(p, bc, t); !ok {
+			if ok := PreProcess(p, bc, t, advertiserChan); !ok {
 				continue
 			}
-			Crawler(p, bc, t)
+			Crawler(p, bc, t, advertiserChan)
 
 		case <-ctx.Done():
 			log.Println("\033[41m Sync: exiting \033[0m")
@@ -141,9 +141,6 @@ func IncomingPacketValidation(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangl
 	if p.PacketType != msg.Packet_BLOCK && SyncMode == false {
 		if int64(p.CurrentBlockNumber) < int64(bc.Tip.CurrentBlockNumber-t.TangleParams.LastBlockToVerify) {
 			return false, nil
-		}
-		if block, err := bc.ReadBlock(p.CurrentBlockHash); err != nil || block.CurrentBlockNumber != p.CurrentBlockNumber {
-			return false, err
 		}
 	}
 	if ok, err := Packet.ValidateSign(p); err != nil || !ok {
@@ -310,7 +307,7 @@ func ExtractLinks(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) ([
 	return listLinks, err
 }
 
-func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) bool {
+func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) bool {
 	var err error
 	hash := sha1.New()
 	hash.Write(p.Hash)
@@ -339,10 +336,11 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) bool
 		return false
 	}
 	log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+	advertiserChan <- p
 	return true
 }
 
-func Crawler(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) {
+func Crawler(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) {
 	list, _ := ExtractLinks(p, bc, t)
 	for index := 0; index < len(list); index++ {
 		start := bytes.Join([][]byte{list[index], Consts.Empty}, []byte{})
@@ -352,9 +350,9 @@ func Crawler(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) {
 			prevPacket := &msg.Packet{}
 			proto.Unmarshal(iter.Value(), prevPacket)
 			if prevPacket.Hash != nil {
-				if ok := PreProcess(prevPacket, bc, t); ok {
+				if ok := PreProcess(prevPacket, bc, t, advertiserChan); ok {
 					UnsyncPoolDB.Delete(iter.Key(), nil)
-					Crawler(prevPacket, bc, t)
+					Crawler(prevPacket, bc, t, advertiserChan)
 				}
 			}
 		}
