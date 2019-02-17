@@ -193,18 +193,31 @@ func CloseUTXO() error {
 
 func HandleBundle(p *msg.Packet) (bool, error) {
 	last := 0
+	var Transactions []*msg.Tx
+	if p.PacketType == msg.Packet_BUNDLE {
+		Transactions = p.GetBundleData().Transactions
+	} else if p.PacketType == msg.Packet_WEAKREQ {
+		Transactions = p.GetWeakData().Burn.Transactions
+	} else if p.PacketType == msg.Packet_INITIAL {
+		if p.GetInitialData().PoBurn == nil {
+			return true, nil
+		}
+		Transactions = p.GetInitialData().PoBurn.Transactions
+	} else {
+		return true, nil
+	}
 	defer func() {
-		if p.GetBundleData().Transactions[last] != p.GetBundleData().Transactions[len(p.GetBundleData().Transactions)-1] {
+		if Transactions[last] != Transactions[len(Transactions)-1] {
 			for ; last >= 0; last-- {
-				if p.GetBundleData().Transactions[last].Value > 0 {
-					UnUTXOWithHash(p.GetBundleData().Transactions[last].Hash)
-				} else if p.GetBundleData().Transactions[last].Value < 0 {
-					PutUTXO(p.GetBundleData().Transactions[last], p.Addr)
+				if Transactions[last].Value > 0 {
+					UnUTXOWithHash(Transactions[last].Hash)
+				} else if Transactions[last].Value < 0 {
+					PutUTXO(Transactions[last], p.Addr)
 				}
 			}
 		}
 	}()
-	data := p.GetBundleData().Transactions
+	data := Transactions
 	for i, v := range data {
 		if v.Value > 0 {
 			if err := PutUTXO(v, p.Addr); err != nil {
