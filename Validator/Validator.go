@@ -7,8 +7,10 @@ import (
 	"github.com/amidmm/MyChain/Blockchain"
 	"github.com/amidmm/MyChain/Bundle"
 	"github.com/amidmm/MyChain/Consts"
+	"github.com/amidmm/MyChain/Initial"
 	"github.com/amidmm/MyChain/Messages"
 	"github.com/amidmm/MyChain/Packet"
+	"github.com/amidmm/MyChain/Rep"
 	"github.com/amidmm/MyChain/Tangle"
 	"github.com/amidmm/MyChain/Transaction"
 	"github.com/amidmm/MyChain/Weak"
@@ -27,6 +29,19 @@ func Validate(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool,
 		}
 		log.Println("\033[31m block done\033[0m")
 	} else {
+		if p.PacketType == msg.Packet_WEAKREQ {
+			if ok, err := Weak.ValidateWeakReq(p.GetWeakData()); err != nil || !ok {
+				return false, err
+			}
+		} else if p.PacketType == msg.Packet_REP {
+			if ok, err := Rep.ValidateRep(p); err != nil || !ok {
+				return false, err
+			}
+		} else if p.PacketType == msg.Packet_INITIAL {
+			if ok, err := Initial.ValidateInitial(p, t); err != nil || !ok {
+				return false, err
+			}
+		}
 		t.AddBundle(p, false)
 	}
 
@@ -80,7 +95,7 @@ func ValidatePacketHashs(b *msg.Block, bc *Blockchain.Blockchain, t *Tangle.Tang
 		if v, err := Bundle.ValidateBundle(p.GetBundleData(), true); err != nil || !v {
 			return false, err
 		}
-		if v, err := t.ValidateVerify(p); err != nil || !v {
+		if v, err := t.ValidateVerify(p, false); err != nil || !v {
 			return false, err
 		}
 		tipCount[string(p.GetBundleData().Verify1)]++
