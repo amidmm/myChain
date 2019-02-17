@@ -258,13 +258,7 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 	// CRITIAL: no esp check is done here
 	// check should be done in other functions
 	raw, _ := proto.Marshal(p)
-	// 'b' is bundle here
-	err := t.DB.Put(
-		bytes.Join([][]byte{
-			[]byte("b"), p.Hash}, []byte{}), raw, nil)
-	if err != nil {
-		return err
-	}
+
 	var data struct {
 		Verify1 []byte
 		Verify2 []byte
@@ -364,14 +358,18 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 			t.CurrentDiff = diff
 		}
 	}
-	if p.PacketType == msg.Packet_BUNDLE {
-		if ok, err := Transaction.HandleBundle(p); err != nil || !ok {
-			return err
-		}
+	//TODO: handle other payments
+	if ok, err := Transaction.HandleBundle(p); err != nil || !ok {
+		return err
 	}
 	err = t.TmapBC.Put(bytes.Join([][]byte{p.CurrentBlockHash, p.Hash}, []byte{}), p.Hash, nil)
-	x := bytes.Join([][]byte{p.CurrentBlockHash, p.Hash}, []byte{})
-	_ = x
+	if err != nil {
+		return err
+	}
+	// 'b' is bundle here
+	err = t.DB.Put(
+		bytes.Join([][]byte{
+			[]byte("b"), p.Hash}, []byte{}), raw, nil)
 	if err != nil {
 		return err
 	}
