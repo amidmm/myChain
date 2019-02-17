@@ -23,6 +23,9 @@ func ValidateWeakReq(r *msg.WeakReq) (bool, error) {
 	if bytes.Compare(r.Hash, GetWeakReqHash(*r)) != 0 {
 		return false, nil
 	}
+	if r.Burn == nil {
+		return false, nil
+	}
 	if v, err := Bundle.ValidateBundle(r.Burn, false); err != nil || !v {
 		return false, err
 	}
