@@ -45,6 +45,7 @@ func init() {
 		log.Panicln("Can't start Node")
 	}
 	go func() {
+		Sync.User = User
 		Sync.IncomingPacket(Ctx, PacketChan, Bc, T, AdvertiserChan)
 	}()
 	deadLockDone = make(chan bool)

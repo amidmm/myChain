@@ -9,8 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Account"
+
 	"github.com/syndtr/goleveldb/leveldb/util"
 
+	"github.com/amidmm/MyChain/Config"
+	"github.com/amidmm/MyChain/Miner"
+	"github.com/amidmm/MyChain/Statistics"
 	"github.com/amidmm/MyChain/Transaction"
 
 	"github.com/golang/protobuf/proto"
@@ -32,6 +37,8 @@ var UnsyncPoolDB *leveldb.DB
 var SyncMode = false
 var syncLock sync.Mutex
 var UnsyncPoolDBTx *leveldb.DB
+var User *Account.User
+var BlockTimer *time.Ticker
 
 func init() {
 	s, err := storage.OpenFile(Consts.UnsyncPool, false)
@@ -42,9 +49,11 @@ func init() {
 	if err != nil {
 		return
 	}
+	//if changed then change the miner shouldBuildBlock function too
+	BlockTimer = time.NewTicker(10 * time.Second)
 }
 
-func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) {
+func IncomingPacket(ctx context.Context, packetChan chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) {
 	for {
 		select {
 		case x := <-packetChan:
@@ -67,11 +76,37 @@ func IncomingPacket(ctx context.Context, packetChan <-chan *msg.Packet, bc *Bloc
 			}
 			if ok := PreProcess(p, bc, t, advertiserChan); !ok {
 				continue
+			} else {
+				if p.PacketType == msg.Packet_BLOCK {
+					Miner.CtxNewBlockCancel()
+				}
+				if Config.Ready && SyncMode == false && Config.Miner {
+					if Miner.IsBusy == 0 && Miner.ShouldBuildBlock(bc) {
+						go func() {
+							blk := Miner.BuildBlock(bc, User)
+							if blk.Hash != nil {
+								packetChan <- &blk
+							}
+						}()
+					}
+				}
 			}
 			Crawler(p, bc, t, advertiserChan)
 
+		case <-BlockTimer.C:
+			if Config.Ready && SyncMode == false && Config.Miner {
+				if Miner.IsBusy == 0 && Miner.ShouldBuildBlock(bc) {
+					go func() {
+						blk := Miner.BuildBlock(bc, User)
+						if blk.Hash != nil {
+							packetChan <- &blk
+						}
+					}()
+				}
+			}
 		case <-ctx.Done():
 			log.Println("\033[41m Sync: exiting \033[0m")
+			Statistics.SystemState.Pretty()
 			return
 		}
 	}
@@ -334,6 +369,11 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 		}
 		log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 		return false
+	}
+	if p.PacketType == msg.Packet_BLOCK {
+		Statistics.SystemState.NewTotalBlock()
+	} else {
+		Statistics.SystemState.NewTotalTangle()
 	}
 	log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 	advertiserChan <- p
