@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 
+	"github.com/amidmm/MyChain/Consts"
+
 	"github.com/amidmm/MyChain/Bundle"
 	"github.com/amidmm/MyChain/Messages"
 	"golang.org/x/crypto/sha3"
@@ -12,9 +14,12 @@ import (
 func GetWeakReqHash(r msg.WeakReq) []byte {
 	r.Hash = nil
 	hash := sha3.New512()
-	var total []byte
-	binary.LittleEndian.PutUint32(total, r.Total)
-	hash.Write(total)
+	var TotalFee []byte
+	binary.LittleEndian.PutUint32(TotalFee, r.TotalFee)
+	hash.Write(TotalFee)
+	var TotalTx []byte
+	binary.LittleEndian.PutUint32(TotalTx, r.TotalTx)
+	hash.Write(TotalTx)
 	hash.Write(Bundle.GetBundleHash(*r.GetBurn()))
 	return hash.Sum(nil)
 }
@@ -28,6 +33,9 @@ func ValidateWeakReq(r *msg.WeakReq) (bool, error) {
 	}
 	if v, err := Bundle.ValidateBundle(r.Burn, false); err != nil || !v {
 		return false, err
+	}
+	if !Bundle.HasBurn(r.Burn) {
+		return false, Consts.ErrNotABurn
 	}
 	return true, nil
 }
