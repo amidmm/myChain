@@ -11,6 +11,7 @@ import (
 
 	"github.com/amidmm/MyChain/Transaction"
 	"github.com/amidmm/MyChain/Utils"
+	"github.com/amidmm/MyChain/Weak"
 
 	"github.com/amidmm/MyChain/Packet"
 
@@ -776,14 +777,16 @@ func (t *Tangle) ValidateVerify(p *msg.Packet, sep bool) (bool, error) {
 		data.Verify2 = p.GetSanityData().Verify2
 		data.Verify3 = nil
 	}
-	if data.Verify1 == nil || data.Verify2 == nil {
-		return false, nil
-	}
-	if _, err := t.UnApproved.Get(data.Verify1, nil); err != nil {
-		return false, err
-	}
-	if _, err := t.UnApproved.Get(data.Verify2, nil); err != nil {
-		return false, err
+	if !Weak.CheckHasWeak(p) {
+		if data.Verify1 == nil || data.Verify2 == nil {
+			return false, nil
+		}
+		if _, err := t.UnApproved.Get(data.Verify1, nil); err != nil {
+			return false, err
+		}
+		if _, err := t.UnApproved.Get(data.Verify2, nil); err != nil {
+			return false, err
+		}
 	}
 	if sep {
 		if _, err := t.UnApproved.Get(data.Verify3, nil); err != nil {

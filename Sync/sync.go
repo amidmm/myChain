@@ -374,6 +374,9 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 		Statistics.SystemState.NewTotalBlock()
 	} else {
 		Statistics.SystemState.NewTotalTangle()
+		if p.PacketType == msg.Packet_WEAKREQ && p.Data != nil {
+			Miner.CurrentWeak = append(Miner.CurrentWeak, p.GetWeakData())
+		}
 	}
 	log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 	advertiserChan <- p
