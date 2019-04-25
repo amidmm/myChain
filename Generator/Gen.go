@@ -220,3 +220,39 @@ func GenBlock(bc *Blockchain.Blockchain, u *Account.User) *msg.Packet {
 	fmt.Println(packet.CurrentBlockNumber)
 	return packet
 }
+
+func GenWeakReq(u *Account.User, totalTx uint32, totalFee uint32, burn *msg.Bundle) *msg.WeakReq {
+	weakreq := &msg.WeakReq{}
+	weakreq.TotalTx = totalTx
+	weakreq.TotalFee = totalFee
+	weakreq.Burn = burn
+	weakreq.Hash = Weak.GetWeakReqHash(*weakreq)
+	return weakreq
+}
+
+func GenBurnTX(u *Account.User, value uint32) *msg.Bundle {
+	bun := &msg.Bundle{}
+	bun.BundleType = msg.Bundle_WEAK
+	bun.Transactions = append(bun.Transactions, GenInTx(u, -int64(value), false))
+	bun.Transactions = append(bun.Transactions, GenInBurnTX(u, int64(value), false))
+	/////////////////////////////
+	bun.Hash = Bundle.GetBundleHash(*bun)
+	for _, tx := range bun.Transactions {
+		tx.BundleHash = bun.Hash
+	}
+	return bun
+}
+
+func GenInBurnTX(u *Account.User, value int64, base bool) *msg.Tx {
+
+	tx := &msg.Tx{}
+	rand.Read(tx.Tag)
+	tx.Value = value
+
+	tx.RefTx = nil
+	tx.Hash = Transaction.GetTxHash(*tx)
+	tx.Sign = Consts.Empty
+
+	return tx
+
+}
