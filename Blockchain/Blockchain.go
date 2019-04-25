@@ -176,7 +176,7 @@ func GenesisBlock() *msg.Packet {
 	packet.Prev = []byte{}
 	packet.Sign = []byte("This is the genesis")
 	block := &msg.Block{}
-	block.Reqs = []*msg.WeakReq{}
+	block.Reqs = []*msg.Packet{}
 	block.Sanities = []*msg.SanityCheck{}
 	block.PacketHashs = []*msg.HashArray{}
 	block.Coinbase = &msg.Tx{}

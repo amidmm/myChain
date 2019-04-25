@@ -3,6 +3,8 @@ package Bundle
 import (
 	"bytes"
 
+	"github.com/amidmm/MyChain/Consts"
+
 	"github.com/amidmm/MyChain/Messages"
 	"github.com/amidmm/MyChain/Transaction"
 	"github.com/golang/protobuf/proto"
@@ -59,7 +61,7 @@ func HasBurn(bun *msg.Bundle) bool {
 	}
 	ok := false
 	for _, v := range bun.Transactions {
-		if v.Value > 0 && v.Sign == nil {
+		if v.Value > 0 && bytes.Equal(v.Sign, Consts.Empty) {
 			ok = true
 		}
 	}

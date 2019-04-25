@@ -117,17 +117,18 @@ func WeakReqMinusMinus(p *msg.Packet) bool {
 func GetWeakReqHash(r msg.WeakReq) []byte {
 	r.Hash = nil
 	hash := sha3.New512()
-	var TotalFee []byte
+	var TotalFee = make([]byte, 4)
 	binary.LittleEndian.PutUint32(TotalFee, r.TotalFee)
 	hash.Write(TotalFee)
-	var TotalTx []byte
+	var TotalTx = make([]byte, 4)
 	binary.LittleEndian.PutUint32(TotalTx, r.TotalTx)
 	hash.Write(TotalTx)
 	hash.Write(Bundle.GetBundleHash(*r.GetBurn()))
 	return hash.Sum(nil)
 }
 
-func ValidateWeakReq(r *msg.WeakReq) (bool, error) {
+func ValidateWeakReq(x *msg.Packet) (bool, error) {
+	r := x.GetWeakData()
 	if bytes.Compare(r.Hash, GetWeakReqHash(*r)) != 0 {
 		return false, nil
 	}

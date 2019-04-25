@@ -23,6 +23,9 @@ func Validate(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool,
 		if err != nil || !ok {
 			return false, err
 		}
+		for _, req := range p.GetBlockData().Reqs {
+			Weak.AddNewWeakReq(req, p)
+		}
 		err = bc.AddBlock(p)
 		if err != nil {
 			return false, nil
@@ -30,11 +33,11 @@ func Validate(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (bool,
 		log.Println("\033[31m block done\033[0m")
 	} else {
 		if p.PacketType == msg.Packet_WEAKREQ {
-			if ok, err := Weak.ValidateWeakReq(p.GetWeakData()); err != nil || !ok {
+			if ok, err := Weak.ValidateWeakReq(p); err != nil || !ok {
 				return false, err
 			}
 		} else if p.PacketType == msg.Packet_REP {
-			if ok, err := Rep.ValidateRep(p); err != nil || !ok {
+			if ok, err := Rep.ValidateRep(p, t); err != nil || !ok {
 				return false, err
 			}
 		} else if p.PacketType == msg.Packet_INITIAL {
@@ -52,7 +55,7 @@ func ValidateBlock(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (
 	switch p.Data.(type) {
 	case *msg.Packet_BlockData:
 		b := p.GetBlockData()
-		if v, err := ValidateWeak(b); err != nil || !v {
+		if v, err := ValidateWeak(p); err != nil || !v {
 			return false, err
 		}
 		if bun, err := ValidatePacketHashs(b, bc, t); err != nil || !bun {
@@ -77,8 +80,8 @@ func ValidateBlock(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (
 	return true, nil
 }
 
-func ValidateWeak(b *msg.Block) (bool, error) {
-	for _, v := range b.Reqs {
+func ValidateWeak(b *msg.Packet) (bool, error) {
+	for _, v := range b.GetBlockData().Reqs {
 		if t, err := Weak.ValidateWeakReq(v); err != nil || !t {
 			return false, err
 		}

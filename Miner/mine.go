@@ -18,7 +18,7 @@ import (
 	crypto "github.com/libp2p/go-libp2p-crypto"
 )
 
-var CurrentWeak []*msg.WeakReq
+var CurrentWeak []*msg.Packet
 var CurrentDumbPacketHashes []*msg.HashArray
 
 // Busy the it is 1
@@ -29,7 +29,7 @@ var CtxNewBlockCancel context.CancelFunc
 func init() {
 	CtxNewBlock = context.Background()
 	CtxNewBlock, CtxNewBlockCancel = context.WithCancel(CtxNewBlock)
-	CurrentWeak = []*msg.WeakReq{}
+	CurrentWeak = []*msg.Packet{}
 	CurrentDumbPacketHashes = []*msg.HashArray{}
 }
 
@@ -76,7 +76,7 @@ func BuildBlock(bc *Blockchain.Blockchain, u *Account.User) msg.Packet {
 	Packet.SetPacketSign(packet, u)
 	PoW.SetPoW(CtxNewBlock, packet, diff)
 	if packet.Nonce == nil {
-		CurrentWeak = make([]*msg.WeakReq, 10)
+		CurrentWeak = make([]*msg.Packet, 10)
 		CurrentDumbPacketHashes = make([]*msg.HashArray, 10)
 		return msg.Packet{}
 	}
