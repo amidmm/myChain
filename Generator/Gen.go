@@ -2,10 +2,14 @@ package Generator
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/amidmm/MyChain/Weak"
 
 	"github.com/multiformats/go-multiaddr"
 
@@ -54,7 +58,7 @@ func Gen(bc *Blockchain.Blockchain, u *Account.User, number int, wg *sync.WaitGr
 		packet.Prev = PrevHash
 		packet.Timestamp = ptypes.TimestampNow()
 		block := &msg.Block{}
-		block.Reqs = []*msg.WeakReq{}
+		block.Reqs = []*msg.Packet{}
 		block.Sanities = []*msg.SanityCheck{}
 		block.PacketHashs = []*msg.HashArray{}
 		valueBase, _ := bc.ExpectedBlockReward()
@@ -86,8 +90,9 @@ func Gen(bc *Blockchain.Blockchain, u *Account.User, number int, wg *sync.WaitGr
 			PacketChan <- packet
 		}
 		diff, _ = bc.CalcNextRequiredDifficulty()
-		fmt.Printf("\033[31m %s \033[0m", u.Name)
-		fmt.Println(packet.CurrentBlockNumber)
+		hash := sha1.New()
+		hash.Write(packet.Hash)
+		fmt.Printf("\033[31m %s \t %s \t %d\t\033[0m\n", u.Name, hex.EncodeToString(hash.Sum(nil)), packet.CurrentBlockNumber)
 	}
 	wg.Done()
 }
@@ -102,7 +107,15 @@ func GenInTx(u *Account.User, value int64, base bool) *msg.Tx {
 		tx.Hash = Transaction.GetTxHash(*tx)
 		tx.Sign, _ = crypto.MarshalPublicKey(u.PubKey)
 	} else if value < 0 {
-		tx.RefTx = Transaction.GetTxHash(initailTX[count])
+		Foundtx := &msg.Tx{}
+		for {
+			Foundtx = u.GetUTXO(-value)
+			if Foundtx.Hash != nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		tx.RefTx = Foundtx.Hash
 		tx.Hash = Transaction.GetTxHash(*tx)
 		Transaction.SetTxSign(tx, u)
 		count++
@@ -145,9 +158,10 @@ func GenBundleWeak(u *Account.User) *msg.Bundle {
 // GenInitialTx returns 1000 coinbase-like tx
 func GenInitialTx(u *Account.User) {
 	Transaction.OpenUTXO()
+	x, _ := u.PubKey.Bytes()
 	for i := 0; i < 100000; i++ {
 		tx := GenInTx(u, 9999999999, true)
-		Transaction.PutUTXO(tx)
+		Transaction.PutUTXO(tx, x)
 		initailTX = append(initailTX, *tx)
 	}
 }
@@ -178,7 +192,7 @@ func GenInitialPackets(u *Account.User) *msg.Initial {
 
 func GenBlock(bc *Blockchain.Blockchain, u *Account.User) *msg.Packet {
 	diff, _ := bc.CalcNextRequiredDifficulty()
-	if diff < Consts.PoWLimit{
+	if diff < Consts.PoWLimit {
 		diff = Consts.PoWLimit
 	}
 	PrevHash := bc.Tip.Hash
@@ -190,7 +204,7 @@ func GenBlock(bc *Blockchain.Blockchain, u *Account.User) *msg.Packet {
 	packet.Prev = PrevHash
 	packet.Timestamp = ptypes.TimestampNow()
 	block := &msg.Block{}
-	block.Reqs = []*msg.WeakReq{}
+	block.Reqs = []*msg.Packet{}
 	block.Sanities = []*msg.SanityCheck{}
 	block.PacketHashs = []*msg.HashArray{}
 	valueBase, _ := bc.ExpectedBlockReward()
