@@ -2,6 +2,8 @@ package Transaction
 
 import (
 	"bytes"
+	"encoding/gob"
+	"errors"
 	"log"
 	"sync"
 
@@ -23,11 +25,23 @@ var UTXOlock sync.Mutex
 var UTXOdatabase *leveldb.DB
 var ThisUserDb *leveldb.DB
 var ThisUserAddr []byte
+var LockMoney *leveldb.DB
 
 func init() {
 	err := OpenUTXO()
 	if err != nil {
 		log.Println("\033[31m TX: unable to open UTXO database " + err.Error() + "\033[0m")
+	}
+	if LockMoney == nil {
+		s, err := storage.OpenFile(Consts.LockMoney, false)
+		if err != nil {
+			log.Fatalln("unable to open LockMoneyDB")
+		}
+		db, err := leveldb.Open(s, nil)
+		if err != nil {
+			log.Fatalln("unable to open LockMoneyDB")
+		}
+		LockMoney = db
 	}
 }
 
@@ -231,4 +245,93 @@ func HandleBundle(p *msg.Packet) (bool, error) {
 		last = i
 	}
 	return true, nil
+}
+
+func HandleLockBundle(p *msg.Packet) (bool, error) {
+	last := 0
+	var Transactions []*msg.Tx
+	var Addrs [][]byte
+	Transactions = p.GetRepData().GetAgreeData().LockMoney.Transactions
+	Addrs = append(Addrs, p.GetRepData().GetAgreeData().Mediator)
+	Addrs = append(Addrs, p.Addr)
+	defer func() {
+		if Transactions[last] != Transactions[len(Transactions)-1] {
+			for ; last >= 0; last-- {
+				if Transactions[last].Value > 0 {
+					UnUTXOWithHash(Transactions[last].Hash)
+				} else if Transactions[last].Value < 0 {
+					PutLockMoney(Transactions[last], Addrs)
+				}
+			}
+		}
+	}()
+	data := Transactions
+	for i, v := range data {
+		if v.Value > 0 {
+			if err := PutLockMoney(v, Addrs); err != nil {
+				return false, err
+			}
+		} else if v.Value < 0 {
+			if err := UnUTXOWithHash(v.Hash); err != nil {
+				return false, err
+			}
+		}
+		last = i
+	}
+	return true, nil
+}
+
+func PutLockMoney(t *msg.Tx, UnLocker [][]byte) error {
+	raw, err := proto.Marshal(t)
+	if err != nil {
+		return err
+	}
+	hash := GetTxHash(*t)
+	err = LockMoney.Put(hash, raw, nil)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	enc.Encode(UnLocker)
+	err = LockMoney.Put(bytes.Join(
+		[][]byte{[]byte("Unlocker"), hash}, []byte{}), buf.Bytes(), nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnLockMoney(hash []byte, addr []byte) error {
+	raw, err := LockMoney.Get(bytes.Join(
+		[][]byte{[]byte("Unlocker"), hash}, []byte{}), nil)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	buf.Write(raw)
+	var addrs [][]byte
+	dec := gob.NewDecoder(&buf)
+	dec.Decode(addrs)
+	IsValid := false
+	for _, a := range addrs {
+		if bytes.Equal(a, addr) {
+			IsValid = true
+		}
+	}
+	if !IsValid {
+		return errors.New("not a right person to unlock")
+	}
+	raw, err = LockMoney.Get(hash, nil)
+	if err != nil {
+		return err
+	}
+	LockMoney.Delete(hash, nil)
+	LockMoney.Delete(bytes.Join(
+		[][]byte{[]byte("Unlocker"), hash}, []byte{}), nil)
+
+	tx := &msg.Tx{}
+	proto.Unmarshal(raw, tx)
+	PutUTXO(tx, tx.Sign)
+	return nil
 }
