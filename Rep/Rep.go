@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log"
 
+	"github.com/amidmm/MyChain/Transaction"
+
 	"github.com/go-ethereum/crypto/sha3"
 	"github.com/golang/protobuf/proto"
 
@@ -94,7 +96,43 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if p.GetRepData().GetAgreeData() == nil {
 			return false, Consts.ErrWrongParam
 		}
-
+		popaRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		popa := &msg.Packet{}
+		proto.Unmarshal(popaRaw, popa)
+		if popa.PacketType != msg.Packet_REP || popa.GetRepData().RepType != msg.Rep_POPRA {
+			return false, errors.New("wrong ref")
+		} else if !bytes.Equal(popa.GetRepData().Addr, p.GetRepData().Addr) {
+			return false, errors.New("wrong ref")
+		}
+		if !bytes.Equal(p.GetRepData().Nonce, popa.GetRepData().Nonce) {
+			return false, errors.New("wrong nonce")
+		}
+		med := false
+		for _, m := range popa.GetRepData().GetPOPRAData().Mediator {
+			if bytes.Equal(p.GetRepData().GetAgreeData().Mediator, m) {
+				med = true
+			}
+		}
+		if popa.GetRepData().GetPOPRAData().Mediator == nil && p.GetRepData().GetAgreeData().Mediator == nil {
+			med = true
+		}
+		if !med {
+			return false, errors.New("med not in popra list")
+		}
+		if popa.GetRepData().GetPOPRAData().LockOnly {
+			if p.GetRepData().GetAgreeData().LockMoney == nil {
+				return false, Consts.ErrWrongParam
+			}
+			if ok, err := Transaction.HandleLockBundle(p); err != nil || !ok {
+				return false, errors.New("wrong lock bundle")
+			}
+		}
+		return true, nil
 	case msg.Rep_CANCEL:
 		if p.GetRepData().GetCancelData() == nil {
 			return false, Consts.ErrWrongParam
