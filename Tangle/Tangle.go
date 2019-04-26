@@ -237,7 +237,7 @@ func GenesisBundle(bc *Blockchain.Blockchain, num int) *msg.Packet {
 	packet := &msg.Packet{}
 	packet.Addr = nil
 	packet.CurrentBlockNumber = bc.Tip.CurrentBlockNumber
-	packet.Diff = 1
+	packet.Diff = Consts.VbcPoWLimit
 	packet.PacketType = msg.Packet_BUNDLE
 	packet.Prev = nil
 	packet.Sign = []byte("This is the Tangle genesis" + string(num))

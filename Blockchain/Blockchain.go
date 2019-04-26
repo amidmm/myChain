@@ -171,7 +171,6 @@ func GenesisBlock() *msg.Packet {
 	packet := &msg.Packet{}
 	packet.Addr = []byte{}
 	packet.CurrentBlockNumber = 1
-	packet.Diff = 1
 	packet.PacketType = msg.Packet_BLOCK
 	packet.Prev = []byte{}
 	packet.Sign = []byte("This is the genesis")
@@ -182,6 +181,7 @@ func GenesisBlock() *msg.Packet {
 	block.Coinbase = &msg.Tx{}
 	packet.Data = &msg.Packet_BlockData{block}
 	PoW.SetPoW(context.Background(), packet, 1)
+	packet.Diff = Consts.PoWLimit
 	Packet.SetHash(packet)
 	return packet
 }

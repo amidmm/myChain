@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amidmm/MyChain/Weak"
+
 	"github.com/amidmm/MyChain/Account"
 
 	"github.com/syndtr/goleveldb/leveldb/util"
@@ -50,7 +52,7 @@ func init() {
 		return
 	}
 	//if changed then change the miner shouldBuildBlock function too
-	BlockTimer = time.NewTicker(10 * time.Second)
+	BlockTimer = time.NewTicker(10 * time.Millisecond)
 }
 
 func IncomingPacket(ctx context.Context, packetChan chan *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, advertiserChan chan *msg.Packet) {
@@ -71,7 +73,7 @@ func IncomingPacket(ctx context.Context, packetChan chan *msg.Packet, bc *Blockc
 				if err != nil {
 					errStr = err.Error()
 				}
-				log.Println("\033[31m Sync: Invalid packet1:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
+				log.Println("\033[31m Sync: Invalid packet1:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 				continue
 			}
 			if ok := PreProcess(p, bc, t, advertiserChan); !ok {
@@ -170,8 +172,10 @@ func IncomingPacketValidation(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangl
 			return false, nil
 		}
 	}
-	if r, err := PoW.ValidatePoW(*p, p.Diff); err != nil || !r {
-		return false, err
+	if p.PacketType == msg.Packet_BLOCK || (!Weak.CheckHasWeak(p) && p.PacketType != msg.Packet_WEAKREQ) {
+		if r, err := PoW.ValidatePoW(*p, p.Diff); err != nil || !r {
+			return false, err
+		}
 	}
 	if p.PacketType != msg.Packet_BLOCK && SyncMode == false {
 		if int64(p.CurrentBlockNumber) < int64(bc.Tip.CurrentBlockNumber-t.TangleParams.LastBlockToVerify) {
@@ -229,8 +233,6 @@ func CheckOrdered(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (b
 		data.Verify2 = p.GetRepData().Verify2
 		data.Verify3 = nil
 	case *msg.Packet_WeakData:
-		data.Verify1 = p.GetWeakData().Verify1
-		data.Verify2 = p.GetWeakData().Verify2
 		data.Verify3 = nil
 		if p.GetWeakData().Burn != nil {
 			for _, v := range p.GetWeakData().Burn.Transactions {
@@ -247,6 +249,11 @@ func CheckOrdered(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (b
 		data.Verify1 = p.GetSanityData().Verify1
 		data.Verify2 = p.GetSanityData().Verify2
 		data.Verify3 = nil
+	}
+
+	if Weak.CheckHasWeak(p) || p.PacketType == msg.Packet_WEAKREQ {
+		data.Verify1 = t.GenesisHash1
+		data.Verify2 = t.GenesisHash2
 	}
 
 	joined := bytes.Join([][]byte{
@@ -350,7 +357,7 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 	if !ok {
 		if SyncMode == false {
 			if _, err = t.UsersTips.Get(p.Addr, nil); p.PacketType != msg.Packet_INITIAL && p.PacketType != msg.Packet_BLOCK && err != nil {
-				log.Println("\033[31m Sync: DOS protection:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
+				log.Println("\033[31m Sync: DOS protection:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + err.Error() + "\033[0m")
 				return false
 			}
 		}
@@ -359,7 +366,7 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 			err = UnsyncPoolDB.Put(bytes.Join([][]byte{list[index], p.Hash}, []byte{}), raw, nil)
 			_ = err
 		}
-		log.Println("\033[34m Sync: added unordered packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+		log.Println("\033[34m Sync: added unordered packet:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 		return false
 	}
 	if ok, err := ProcessPacket(p, bc, t); err != nil || !ok {
@@ -367,7 +374,7 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 		if err != nil {
 			errStr = err.Error()
 		}
-		log.Println("\033[31m Sync: unable to process packet:\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
+		log.Println("\033[31m Sync: unable to process packet:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\t" + errStr + "\033[0m")
 		return false
 	}
 	if p.PacketType == msg.Packet_BLOCK {
@@ -375,10 +382,10 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 	} else {
 		Statistics.SystemState.NewTotalTangle()
 		if p.PacketType == msg.Packet_WEAKREQ && p.Data != nil {
-			Miner.CurrentWeak = append(Miner.CurrentWeak, p.GetWeakData())
+			Miner.CurrentWeak = append(Miner.CurrentWeak, p)
 		}
 	}
-	log.Println("\033[32m Sync: Packet processed:\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+	log.Println("\033[32m Sync: Packet processed:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 	advertiserChan <- p
 	return true
 }
