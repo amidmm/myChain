@@ -84,7 +84,7 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		proto.Unmarshal(poprRaw, popr)
 		if popr.PacketType != msg.Packet_REP || popr.GetRepData().RepType != msg.Rep_POPR {
 			return false, errors.New("wrong ref")
-		} else if !bytes.Equal(popr.GetRepData().Addr, p.GetRepData().Addr) {
+		} else if !bytes.Equal(popr.GetRepData().Addr, p.Addr) || !bytes.Equal(popr.Addr, p.GetRepData().Addr) {
 			return false, errors.New("wrong ref")
 		}
 		if !bytes.Equal(p.GetRepData().Nonce, popr.GetRepData().Nonce) {
@@ -106,7 +106,7 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		proto.Unmarshal(popaRaw, popa)
 		if popa.PacketType != msg.Packet_REP || popa.GetRepData().RepType != msg.Rep_POPRA {
 			return false, errors.New("wrong ref")
-		} else if !bytes.Equal(popa.GetRepData().Addr, p.GetRepData().Addr) {
+		} else if !bytes.Equal(popa.GetRepData().Addr, p.Addr) || !bytes.Equal(popa.Addr, p.GetRepData().Addr) {
 			return false, errors.New("wrong ref")
 		}
 		if !bytes.Equal(p.GetRepData().Nonce, popa.GetRepData().Nonce) {
