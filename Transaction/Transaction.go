@@ -335,3 +335,27 @@ func UnLockMoney(hash []byte, addr []byte) error {
 	PutUTXO(tx, tx.Sign)
 	return nil
 }
+
+func CancelLockMoney(bundle *msg.Bundle, addr []byte, refundAddr []byte) error {
+	for _, v := range bundle.Transactions {
+		if v.Value > 0 {
+			hash := v.Hash
+			raw, err := LockMoney.Get(hash, nil)
+			if err != nil {
+				return err
+			}
+			tx := &msg.Tx{}
+			proto.Unmarshal(raw, tx)
+			if !bytes.Equal(tx.Sign, addr) {
+				return errors.New("not owned to cancel")
+			}
+			tx.Sign = refundAddr
+			tx.Hash = GetTxHash(*tx)
+			PutUTXO(tx, refundAddr)
+			LockMoney.Delete(hash, nil)
+			LockMoney.Delete(bytes.Join(
+				[][]byte{[]byte("Unlocker"), hash}, []byte{}), nil)
+		}
+	}
+	return nil
+}
