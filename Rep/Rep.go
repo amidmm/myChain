@@ -162,10 +162,68 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if p.GetRepData().GetComplaintData() == nil {
 			return false, Consts.ErrWrongParam
 		}
+		agreeRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		agree := &msg.Packet{}
+		proto.Unmarshal(agreeRaw, agree)
+		if agree.PacketType != msg.Packet_REP || agree.GetRepData().RepType != msg.Rep_AGREE {
+			return false, errors.New("wrong ref")
+		} else if (!bytes.Equal(agree.GetRepData().Addr, p.Addr) || !bytes.Equal(agree.Addr, p.GetRepData().Addr)) && (!bytes.Equal(agree.Addr, p.Addr) || !bytes.Equal(agree.GetRepData().Addr, p.GetRepData().Addr)) {
+			return false, errors.New("wrong ref")
+		}
+		if !bytes.Equal(p.GetRepData().Nonce, agree.GetRepData().Nonce) {
+			return false, errors.New("wrong nonce")
+		}
+		if agree.GetRepData().GetAgreeData().LockMoney != nil {
+			for _, tx := range agree.GetRepData().GetAgreeData().LockMoney.Transactions {
+				if tx.Value > 0 {
+					err = Transaction.UnLockMoney(tx.Hash, agree.GetRepData().GetAgreeData().Mediator, agree.GetRepData().GetAgreeData().Mediator)
+					if err != nil {
+						return false, err
+					}
+				}
+			}
+		}
+		return true, nil
+
 	case msg.Rep_MEDIATOR:
 		if p.GetRepData().GetMediatorData() == nil {
 			return false, Consts.ErrWrongParam
 		}
+		complaintRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		complaint := &msg.Packet{}
+		proto.Unmarshal(complaintRaw, complaint)
+		if complaint.PacketType != msg.Packet_REP || complaint.GetRepData().RepType != msg.Rep_COMPLAINT {
+			return false, errors.New("wrong ref")
+		}
+		if !bytes.Equal(p.GetRepData().Nonce, complaint.GetRepData().Nonce) {
+			return false, errors.New("wrong nonce")
+		}
+		agreeRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), complaint.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		agree := &msg.Packet{}
+		proto.Unmarshal(agreeRaw, agree)
+		if !bytes.Equal(p.Addr, agree.GetRepData().GetAgreeData().Mediator) {
+			return false, errors.New("not a mediator")
+		}
+		if ok, err := Transaction.HandleBundle(p); !ok || err != nil {
+			return false, err
+		}
+		return true, nil
+
 	case msg.Rep_REVIEW:
 		if p.GetRepData().GetReviewData() == nil {
 			return false, Consts.ErrWrongParam
