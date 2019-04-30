@@ -293,7 +293,10 @@ func PutLockMoney(t *msg.Tx, UnLocker [][]byte) error {
 	}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	enc.Encode(UnLocker)
+	err = enc.Encode(UnLocker)
+	if err != nil {
+		return err
+	}
 	err = LockMoney.Put(bytes.Join(
 		[][]byte{[]byte("Unlocker"), hash}, []byte{}), buf.Bytes(), nil)
 	if err != nil {
@@ -310,11 +313,14 @@ func UnLockMoney(hash []byte, addr []byte) error {
 	}
 	var buf bytes.Buffer
 	buf.Write(raw)
-	var addrs [][]byte
+	addrs := &[][]byte{}
 	dec := gob.NewDecoder(&buf)
-	dec.Decode(addrs)
+	err = dec.Decode(addrs)
+	if err != nil {
+		return err
+	}
 	IsValid := false
-	for _, a := range addrs {
+	for _, a := range *addrs {
 		if bytes.Equal(a, addr) {
 			IsValid = true
 		}
