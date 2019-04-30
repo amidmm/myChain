@@ -217,6 +217,8 @@ func HandleBundle(p *msg.Packet) (bool, error) {
 			return true, nil
 		}
 		Transactions = p.GetInitialData().PoBurn.Transactions
+	} else if p.PacketType == msg.Packet_REP && p.GetRepData().RepType == msg.Rep_MEDIATOR {
+		Transactions = p.GetRepData().GetMediatorData().Refund.Transactions
 	} else {
 		return true, nil
 	}
@@ -305,7 +307,7 @@ func PutLockMoney(t *msg.Tx, UnLocker [][]byte) error {
 	return nil
 }
 
-func UnLockMoney(hash []byte, addr []byte) error {
+func UnLockMoney(hash []byte, addr []byte, dist []byte) error {
 	raw, err := LockMoney.Get(bytes.Join(
 		[][]byte{[]byte("Unlocker"), hash}, []byte{}), nil)
 	if err != nil {
@@ -338,6 +340,9 @@ func UnLockMoney(hash []byte, addr []byte) error {
 
 	tx := &msg.Tx{}
 	proto.Unmarshal(raw, tx)
+	if dist != nil {
+		tx.Sign = dist
+	}
 	PutUTXO(tx, tx.Sign)
 	return nil
 }
