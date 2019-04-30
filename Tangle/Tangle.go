@@ -278,10 +278,6 @@ func (t *Tangle) AddBundle(p *msg.Packet, special bool) error {
 		data.Verify1 = p.GetRepData().Verify1
 		data.Verify2 = p.GetRepData().Verify2
 		data.Verify3 = nil
-	case *msg.Packet_WeakData:
-		data.Verify1 = p.GetWeakData().Verify1
-		data.Verify2 = p.GetWeakData().Verify2
-		data.Verify3 = nil
 	case *msg.Packet_SanityData:
 		data.Verify1 = p.GetSanityData().Verify1
 		data.Verify2 = p.GetSanityData().Verify2
@@ -767,10 +763,6 @@ func (t *Tangle) ValidateVerify(p *msg.Packet, sep bool) (bool, error) {
 	case *msg.Packet_RepData:
 		data.Verify1 = p.GetRepData().Verify1
 		data.Verify2 = p.GetRepData().Verify2
-		data.Verify3 = nil
-	case *msg.Packet_WeakData:
-		data.Verify1 = p.GetWeakData().Verify1
-		data.Verify2 = p.GetWeakData().Verify2
 		data.Verify3 = nil
 	case *msg.Packet_SanityData:
 		data.Verify1 = p.GetSanityData().Verify1
