@@ -370,3 +370,37 @@ func CancelLockMoney(bundle *msg.Bundle, addr []byte, refundAddr []byte) error {
 	}
 	return nil
 }
+
+func GetUserUTXO(u []byte, value int64) *msg.Tx {
+	tx := &msg.Tx{}
+	if value <= 0 {
+		return nil
+	}
+	iter := UTXOdatabase.NewIterator(nil, nil)
+	for iter.Next() {
+		packet := &msg.Tx{}
+		_ = proto.Unmarshal(iter.Value(), packet)
+		if !bytes.Equal(packet.Sign, u) {
+			continue
+		}
+		if packet.Value >= value {
+			tx = packet
+			break
+		}
+	}
+	iter.Release()
+	return tx
+}
+
+func GetLockMoney(hash []byte) (*msg.Tx, error) {
+	raw, err := LockMoney.Get(hash, nil)
+	if err != nil {
+		return nil, err
+	}
+	t := &msg.Tx{}
+	err = proto.Unmarshal(raw, t)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
