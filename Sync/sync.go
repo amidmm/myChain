@@ -232,6 +232,37 @@ func CheckOrdered(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle) (b
 		data.Verify1 = p.GetRepData().Verify1
 		data.Verify2 = p.GetRepData().Verify2
 		data.Verify3 = nil
+		if p.GetRepData().Ref != nil {
+			_, err := t.DB.Get(bytes.Join([][]byte{
+				[]byte("b"), p.GetRepData().Ref}, []byte{}), nil)
+			if err == leveldb.ErrNotFound {
+				listOfUnordered = append(listOfUnordered, p.GetRepData().Ref)
+				isOrderd = false
+			}
+		}
+
+		if p.GetRepData().RepType == msg.Rep_AGREE && p.GetRepData().GetAgreeData().LockMoney != nil {
+			for _, v := range p.GetRepData().GetAgreeData().LockMoney.Transactions {
+				if v.Value < 0 {
+					_, err := Transaction.GetUTXO(v.RefTx)
+					if err == leveldb.ErrNotFound {
+						listOfUnordered = append(listOfUnordered, v.RefTx)
+						isOrderd = false
+					}
+				}
+			}
+		}
+		if p.GetRepData().RepType == msg.Rep_MEDIATOR && p.GetRepData().GetMediatorData().Refund != nil {
+			for _, v := range p.GetRepData().GetMediatorData().Refund.Transactions {
+				if v.Value < 0 {
+					_, err := Transaction.GetUTXO(v.RefTx)
+					if err == leveldb.ErrNotFound {
+						listOfUnordered = append(listOfUnordered, v.RefTx)
+						isOrderd = false
+					}
+				}
+			}
+		}
 	case *msg.Packet_WeakData:
 		data.Verify3 = nil
 		if p.GetWeakData().Burn != nil {
