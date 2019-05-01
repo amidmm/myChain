@@ -124,9 +124,26 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if !med {
 			return false, errors.New("med not in popra list")
 		}
-		if popa.GetRepData().GetPOPRAData().LockOnly {
+		if popa.GetRepData().GetPOPRAData().LockOnly || p.GetRepData().GetAgreeData().LockMoney != nil {
 			if p.GetRepData().GetAgreeData().LockMoney == nil {
 				return false, Consts.ErrWrongParam
+			}
+			sum := int64(0)
+			for _, tx := range p.GetRepData().GetAgreeData().LockMoney.Transactions {
+				if tx.Value > 0 && bytes.Equal(tx.Sign, p.GetRepData().Addr) {
+					sum += tx.Value
+				}
+			}
+			poprRaw, err := t.DB.Get(bytes.Join(
+				[][]byte{[]byte("b"), popa.GetRepData().Ref}, []byte{}),
+				nil)
+			if err != nil {
+				return false, nil
+			}
+			popr := &msg.Packet{}
+			proto.Unmarshal(poprRaw, popr)
+			if uint64(sum) < popr.GetRepData().GetPOPRData().Value {
+				return false, errors.New("not enough coin in LockMoney")
 			}
 			if ok, err := Transaction.HandleLockBundle(p); err != nil || !ok {
 				return false, errors.New("wrong lock bundle")
