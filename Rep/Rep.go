@@ -241,6 +241,34 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		}
 		return true, nil
 
+	case msg.Rep_DONE:
+		if p.GetRepData().GetDoneData() == nil {
+			return false, Consts.ErrWrongParam
+		}
+		agreeRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		agree := &msg.Packet{}
+		proto.Unmarshal(agreeRaw, agree)
+		if agree.PacketType != msg.Packet_REP || agree.GetRepData().RepType != msg.Rep_AGREE {
+			return false, errors.New("wrong ref")
+		} else if !bytes.Equal(agree.Addr, p.Addr) {
+			return false, errors.New("wrong ref")
+		}
+		if !bytes.Equal(p.GetRepData().Nonce, agree.GetRepData().Nonce) {
+			return false, errors.New("wrong nonce")
+		}
+		if agree.GetRepData().GetAgreeData().LockMoney != nil {
+			for _, tx := range agree.GetRepData().GetAgreeData().LockMoney.Transactions {
+				if tx.Value > 0 {
+					Transaction.UnLockMoney(tx.Hash, p.Addr, agree.GetRepData().Addr)
+				}
+			}
+		}
+		return true, nil
 	case msg.Rep_REVIEW:
 		if p.GetRepData().GetReviewData() == nil {
 			return false, Consts.ErrWrongParam
