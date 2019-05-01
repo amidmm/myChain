@@ -273,6 +273,48 @@ func ValidateRep(p *msg.Packet, t *Tangle.Tangle) (bool, error) {
 		if p.GetRepData().GetReviewData() == nil {
 			return false, Consts.ErrWrongParam
 		}
+		//check agree
+		refRaw, err := t.DB.Get(bytes.Join(
+			[][]byte{[]byte("b"), p.GetRepData().Ref}, []byte{}),
+			nil)
+		if err != nil {
+			return false, nil
+		}
+		ref := &msg.Packet{}
+		proto.Unmarshal(refRaw, ref)
+		if ref.PacketType != msg.Packet_REP || (ref.GetRepData().RepType != msg.Rep_DONE && ref.GetRepData().RepType != msg.Rep_COMPLAINT) {
+			return false, errors.New("wrong ref")
+		}
+		// check pay
+		if ref.GetRepData().RepType == msg.Rep_DONE {
+			agreeRaw, err := t.DB.Get(bytes.Join(
+				[][]byte{[]byte("b"), ref.GetRepData().Ref}, []byte{}),
+				nil)
+			if err != nil {
+				return false, nil
+			}
+			agree := &msg.Packet{}
+			proto.Unmarshal(agreeRaw, agree)
+			if agree.GetRepData().GetAgreeData().LockMoney == nil {
+				for _, tx := range p.GetRepData().GetReviewData().TxAddr {
+					bundleRaw, err := t.DB.Get(bytes.Join(
+						[][]byte{[]byte("b"), tx}, []byte{}),
+						nil)
+					if err != nil {
+						return false, nil
+					}
+					bun := &msg.Bundle{}
+					proto.Unmarshal(bundleRaw, bun)
+					if !bytes.Equal(bun.Nonce, ref.Nonce) {
+						return false, errors.New("not the same payment")
+					}
+				}
+			}
+		}
+		if p.GetRepData().GetReviewData().Rate > 1000 {
+			return false, errors.New("rate not in bound")
+		}
+		return true, nil
 
 	case msg.Rep_REVENGE:
 		if p.GetRepData().GetRevengeData() == nil {
