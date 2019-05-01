@@ -416,7 +416,11 @@ func PreProcess(p *msg.Packet, bc *Blockchain.Blockchain, t *Tangle.Tangle, adve
 			Miner.CurrentWeak = append(Miner.CurrentWeak, p)
 		}
 	}
-	log.Println("\033[32m Sync: Packet processed:\t[" + p.PacketType.String() + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
+	packetType := p.PacketType.String()
+	if p.PacketType == msg.Packet_REP {
+		packetType += "-" + p.GetRepData().RepType.String()
+	}
+	log.Println("\033[32m Sync: Packet processed:\t[" + packetType + "]\t" + hex.EncodeToString(hash.Sum(nil)) + "\033[0m")
 	advertiserChan <- p
 	return true
 }
