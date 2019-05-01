@@ -270,3 +270,108 @@ func GenInBurnTX(u *Account.User, value int64, base bool) *msg.Tx {
 	return tx
 
 }
+
+func GenEmptyRep(repType msg.RepType, addr []byte, nonce []byte, ref []byte, expire time.Time, tags []byte) *msg.Rep {
+	rep := &msg.Rep{}
+	rep.RepType = repType
+	rep.Addr = addr
+	rep.Nonce = nonce
+	rep.Ref = ref
+	rep.Expire, _ = ptypes.TimestampProto(expire)
+	rep.Tag = tags
+	return rep
+}
+func GenPOPR(value uint64, med [][]byte, expire time.Time, cert *msg.Cert) *msg.POPR {
+	popr := &msg.POPR{}
+	popr.Value = value
+	popr.Mediator = med
+	popr.MediatorExpire, _ = ptypes.TimestampProto(expire)
+	popr.Certified = cert
+	return popr
+}
+
+func GenPOPRA(med [][]byte, noFeedBack bool, lockOnly bool) *msg.POPRA {
+	popra := &msg.POPRA{}
+	popra.Mediator = med
+	popra.NoFeedback = noFeedBack
+	popra.LockOnly = lockOnly
+	return popra
+}
+
+func GenAgree(med []byte, lock *msg.Bundle) *msg.Agree {
+	agree := &msg.Agree{}
+	agree.Mediator = med
+	agree.LockMoney = lock
+	return agree
+}
+
+func GenComplaint(ipfs []byte) *msg.Complaint {
+	return &msg.Complaint{IpfsDetail: ipfs}
+}
+
+// GenInTx generates transactions
+func GenInTxForOther(u *Account.User, value int64, base bool) *msg.Tx {
+	tx := &msg.Tx{}
+	rand.Read(tx.Tag)
+	tx.Value = value
+	if base {
+		tx.RefTx = nil
+		tx.Hash = Transaction.GetTxHash(*tx)
+		tx.Sign, _ = crypto.MarshalPublicKey(u.PubKey)
+	} else if value < 0 {
+		Foundtx := &msg.Tx{}
+		addr, _ := crypto.MarshalPublicKey(u.PubKey)
+		for {
+			Foundtx = Transaction.GetUserUTXO(addr, -value)
+			if Foundtx.Hash != nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		tx.RefTx = Foundtx.Hash
+		tx.Hash = Transaction.GetTxHash(*tx)
+		Transaction.SetTxSign(tx, u)
+		count++
+		return tx
+	} else {
+		tx.RefTx = nil
+		tx.Hash = Transaction.GetTxHash(*tx)
+		tx.Sign, _ = crypto.MarshalPublicKey(u.PubKey)
+	}
+	return tx
+}
+
+func GenBundleWeakForOther(u *Account.User) *msg.Bundle {
+	bun := &msg.Bundle{}
+	bun.BundleType = msg.Bundle_WEAK
+	// 1 beacuse it produce tx with the same hash
+	value := rand.Int63n(1)
+	tmp := value
+	for value > 1 {
+		txValue := rand.Int63n(value)
+		value -= txValue
+		bun.Transactions = append(bun.Transactions, GenInTx(u, txValue, false))
+	}
+	bun.Transactions = append(bun.Transactions, GenInTx(u, 1, false))
+	/////////////////////////////
+	value = tmp
+	for value > 1 {
+		txValue := rand.Int63n(value)
+		value -= txValue
+		bun.Transactions = append(bun.Transactions, GenInTxForOther(u, -txValue, false))
+	}
+	bun.Transactions = append(bun.Transactions, GenInTxForOther(u, -1, false))
+	bun.Hash = Bundle.GetBundleHash(*bun)
+	for _, tx := range bun.Transactions {
+		tx.BundleHash = bun.Hash
+	}
+	return bun
+}
+
+func GenReview(rate uint32, IpfsDetail []byte, addrs [][]byte) *msg.Review {
+	review := &msg.Review{}
+	review.Rate = rate
+	review.IpfsReview = IpfsDetail
+	review.TxAddr = addrs
+	return review
+}
