@@ -10,6 +10,7 @@ message packet{
         REP=2;
         WEAKREQ=3;
         SANITYCHECK=4;
+        INITIAL=5;
     }
     type                        packet_type =1;
     google.protobuf.Timestamp   timestamp =2;
@@ -20,16 +21,18 @@ message packet{
     uint64                      current_block_number=7;
     bytes                       addr=13;  
     bytes                       sign=14;    //Not included for pow
+    bytes                       current_block_hash=15;
     oneof data{
         block           blockData=8;
         bundle          bundleData=9;
         rep             repData=10;
         weak_req        weakData=11;
         sanity_check    sanityData=12;
+        initial         initialData=16; 
     }
 }
 message block {
-    repeated weak_req       reqs=1;
+    repeated packet         reqs=1;
     repeated HashArray      packetHashs=2;  // Packet of bundles
     repeated sanity_check   sanities=3;
     tx                      coinbase=4; //TODO: Do we need this?    
@@ -47,41 +50,104 @@ message bundle {
     repeated tx transactions=3;
     bytes       verify1=4;
     bytes       verify2=5;
+    bytes       verify3=6;
+    bytes       nonce=7;
 }
-message tx{
+message tx{             //first sign then hash
     bytes   hash =1;
     bytes   bundle_hash=6;
     bytes   refTx=2;    //This can be both Tangle coins and Blockchain coins
-    bytes   sign=3;
+    bytes   sign=3;     // First sign then create bundle
     int64   value=4;
     bytes   tag=5;      //This is used for proof-of-payment-request
 }
 message weak_req {
-    bytes   hash=1;
-    uint32  total=2;
-    bundle  burn=3;     // Prevent DoS with weak_req
+    bytes   hash=1;     //Not required
+    uint32  total_tx=2;
+    uint32  total_fee=3;
+    bundle  burn=4;     // Prevent DoS with weak_req
 }
 message rep {
     enum type{
         POPR=0;     //Same as an empty rep, the addr is the recipient
         POPRA=1;    //TODO: Same as an empty rep, the addr is the hash of POPR 
         REVIEW=2;
-        INITIAL=3;
+        MEDIATOR=3;
+        AGREE=4;
+        REVENGE=5;
+        CANCEL=6;
+        COMPLAINT=7;
+        DONE=8;
     }
-    type    hash=1;
+    type    rep_type=6;
+    bytes   hash=1;
     bytes   addr=2;
-    review  rep_review=3;
+    oneof   data{
+        p_o_p_r     p_o_p_r_data=3;
+        p_o_p_r_a   p_o_p_r_a_data=9;
+        review      review_data=10;
+        mediator    mediator_data=11;
+        agree       agree_data=12;
+        revenge     revenge_data=13;
+        cancel      cancel_data=15;
+        complaint   complaint_data=16;
+        done        done_data=17;
+    }
+    bytes   verify1=4;
+    bytes   verify2=5;
+    bytes   nonce=7;
+    bytes   ref=8;
+    google.protobuf.Timestamp   expire=14;
+    bytes   tag=18;
 }
 message review {
     uint32  rate=1;
-    uint32  confidence=2;
-    bytes   ipfs_review=3;   
+    bytes   ipfs_review=3;
+    repeated bytes   tx_addr=4;     //this the bundle addrs 
+}
+message p_o_p_r{
+    uint64                      value=1;
+    repeated bytes              mediator=3;
+    google.protobuf.Timestamp   mediator_expire=4;
+    cert                        certified=5;
+    uint32                      confidence=6;
+}
+message cert{
+    bytes   cert_addr=1;
+    bytes   cert_sign=2;
+}
+message p_o_p_r_a{
+    repeated bytes  mediator=1;
+    bool            no_feedback=2;
+    bool            lock_only=3;
+}
+message mediator{
+    bundle  refund=1;
+    bytes   ipfs_detail=2;
+}
+message agree{
+    bytes   mediator=1;
+    bundle  lock_money=2;
+}
+message revenge{
+    bundle  revenge_bundle=1;
+    bytes   ipfs_detail=2;
+}
+message cancel{}
+message done{}
+message complaint{
+    bytes   ipfs_detail=1;
 }
 message initial {
-    bundle  p_o_burn=1;
+    bundle  po_burn=1;
     bytes   service=2;
-    bytes   owner_addr=3;   //optional
+    bytes   owner_addr=3;   //optional to provide (it's not the same as addr in packet)
+    bytes   owner_addr_sign=7; //signs currentBlockHash + packet addr
     bytes   ipfs_detail=4;
+    bytes   verify1=5; // it was better to change the messaages layout so verifications won't be replicated in bundle and here and ...
+    bytes   verify2=6;
 }
 message sanity_check {
+    bytes   verify1=4;
+    bytes   verify2=5;
 }
